@@ -1,0 +1,330 @@
+# Scoring Criteria Configuration
+# This file defines the scoring rubric for candidate evaluation
+
+version: "1.0"
+last_updated: "2025-10-19"
+
+# Overall scoring weights (must sum to 1.0)
+weights:
+  technical_skills: 0.30
+  experience: 0.25
+  education: 0.15
+  cultural_fit: 0.15
+  communication: 0.10
+  availability: 0.05
+
+# Technical Skills Scoring
+technical_skills:
+  description: "Evaluation of candidate's technical competencies"
+  max_score: 100
+  
+  # Required skills for different roles
+  role_specific_skills:
+    software_engineer:
+      - name: "Programming Languages"
+        weight: 0.35
+        required:
+          - Python
+          - JavaScript
+          - Java
+        nice_to_have:
+          - Go
+          - Rust
+          - TypeScript
+      
+      - name: "Frameworks & Tools"
+        weight: 0.30
+        required:
+          - React
+          - Node.js
+          - Docker
+        nice_to_have:
+          - Kubernetes
+          - AWS
+          - GraphQL
+      
+      - name: "Software Engineering Practices"
+        weight: 0.35
+        required:
+          - Git
+          - Testing
+          - CI/CD
+        nice_to_have:
+          - Agile
+          - System Design
+          - Code Review
+    
+    data_scientist:
+      - name: "Machine Learning"
+        weight: 0.40
+        required:
+          - Python
+          - TensorFlow/PyTorch
+          - Statistical Analysis
+        nice_to_have:
+          - Deep Learning
+          - NLP
+          - Computer Vision
+      
+      - name: "Data Processing"
+        weight: 0.35
+        required:
+          - SQL
+          - Pandas
+          - Data Visualization
+        nice_to_have:
+          - Spark
+          - Airflow
+          - ETL Pipelines
+      
+      - name: "Research & Experimentation"
+        weight: 0.25
+        required:
+          - Jupyter
+          - A/B Testing
+          - Model Evaluation
+        nice_to_have:
+          - MLOps
+          - Feature Engineering
+          - Research Publications
+
+# Experience Scoring
+experience:
+  description: "Years of relevant experience and career progression"
+  max_score: 100
+  
+  scoring_matrix:
+    - years: "0-1"
+      score: 20
+      description: "Entry level"
+    
+    - years: "1-3"
+      score: 40
+      description: "Junior"
+    
+    - years: "3-5"
+      score: 60
+      description: "Mid-level"
+    
+    - years: "5-8"
+      score: 80
+      description: "Senior"
+    
+    - years: "8+"
+      score: 100
+      description: "Principal/Staff"
+  
+  # Additional experience factors
+  bonus_factors:
+    startup_experience:
+      weight: 0.10
+      description: "Experience in startup environment"
+    
+    leadership:
+      weight: 0.15
+      description: "Team leadership or mentoring experience"
+    
+    open_source:
+      weight: 0.10
+      description: "Open source contributions"
+    
+    relevant_domain:
+      weight: 0.20
+      description: "Experience in target domain (e.g., fintech, healthcare)"
+
+# Education Scoring
+education:
+  description: "Academic credentials and continuous learning"
+  max_score: 100
+  
+  degree_scores:
+    phd: 100
+    masters: 85
+    bachelors: 70
+    associate: 50
+    bootcamp: 60
+    self_taught: 40
+  
+  field_relevance:
+    highly_relevant:
+      multiplier: 1.0
+      fields:
+        - Computer Science
+        - Software Engineering
+        - Data Science
+        - Mathematics
+        - Statistics
+    
+    somewhat_relevant:
+      multiplier: 0.8
+      fields:
+        - Engineering (other)
+        - Physics
+        - Information Systems
+    
+    not_relevant:
+      multiplier: 0.6
+      fields:
+        - Other
+  
+  certifications:
+    - name: "AWS Certified"
+      bonus: 5
+    
+    - name: "Google Cloud Certified"
+      bonus: 5
+    
+    - name: "Kubernetes Certified"
+      bonus: 5
+    
+    - name: "PMP"
+      bonus: 3
+
+# Cultural Fit Scoring
+cultural_fit:
+  description: "Alignment with company values and culture"
+  max_score: 100
+  
+  evaluation_criteria:
+    - criterion: "Company Values Alignment"
+      weight: 0.30
+      indicators:
+        - Innovation mindset
+        - Collaboration
+        - Ownership
+    
+    - criterion: "Work Style Compatibility"
+      weight: 0.25
+      indicators:
+        - Remote work capability
+        - Async communication
+        - Autonomy
+    
+    - criterion: "Growth Mindset"
+      weight: 0.25
+      indicators:
+        - Learning orientation
+        - Adaptability
+        - Curiosity
+    
+    - criterion: "Team Dynamics"
+      weight: 0.20
+      indicators:
+        - Interpersonal skills
+        - Conflict resolution
+        - Feedback receptiveness
+
+# Communication Skills
+communication:
+  description: "Written and verbal communication abilities"
+  max_score: 100
+  
+  assessment_areas:
+    - area: "Resume Quality"
+      weight: 0.30
+      factors:
+        - Clarity
+        - Grammar
+        - Structure
+        - Conciseness
+    
+    - area: "Cover Letter"
+      weight: 0.20
+      factors:
+        - Relevance
+        - Enthusiasm
+        - Writing quality
+    
+    - area: "Online Presence"
+      weight: 0.25
+      factors:
+        - LinkedIn profile quality
+        - GitHub README quality
+        - Technical blog posts
+    
+    - area: "Email Communication"
+      weight: 0.25
+      factors:
+        - Responsiveness
+        - Professionalism
+        - Clarity
+
+# Availability
+availability:
+  description: "Start date and schedule compatibility"
+  max_score: 100
+  
+  start_date_scoring:
+    immediate: 100
+    within_2_weeks: 90
+    within_1_month: 80
+    within_2_months: 60
+    more_than_2_months: 40
+  
+  schedule_compatibility:
+    full_time_aligned: 100
+    flexible_hours: 80
+    timezone_concerns: 60
+    significant_mismatch: 30
+
+# Threshold Settings
+thresholds:
+  minimum_passing_score: 60
+  
+  tier_classification:
+    exceptional:
+      min_score: 85
+      max_score: 100
+      action: "Fast-track to final round"
+    
+    strong:
+      min_score: 70
+      max_score: 84
+      action: "Proceed to technical interview"
+    
+    moderate:
+      min_score: 60
+      max_score: 69
+      action: "Conditional interview"
+    
+    weak:
+      min_score: 0
+      max_score: 59
+      action: "Reject or talent pool"
+  
+  auto_approval_threshold: 80
+  manual_review_threshold: 60
+
+# Red Flags (automatic score penalties)
+red_flags:
+  - flag: "Resume gaps > 2 years unexplained"
+    penalty: -10
+  
+  - flag: "Job hopping (>4 jobs in 2 years)"
+    penalty: -5
+  
+  - flag: "Skill exaggeration detected"
+    penalty: -15
+  
+  - flag: "Poor communication in initial contact"
+    penalty: -10
+  
+  - flag: "Unrealistic salary expectations"
+    penalty: -5
+
+# Green Flags (automatic score bonuses)
+green_flags:
+  - flag: "Referral from current employee"
+    bonus: +10
+  
+  - flag: "Previous company alum"
+    bonus: +5
+  
+  - flag: "Notable achievements/awards"
+    bonus: +10
+  
+  - flag: "Strong GitHub presence (>100 stars)"
+    bonus: +5
+  
+  - flag: "Conference speaker/presenter"
+    bonus: +8
