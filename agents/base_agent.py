@@ -1,9 +1,8 @@
 """Base agent class for all recruiting agents."""
 
 from abc import ABC, abstractmethod
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Union
 from pydantic import BaseModel
-from langchain.llms.base import BaseLLM
 from langchain_openai import ChatOpenAI
 from langchain_anthropic import ChatAnthropic
 
@@ -32,7 +31,7 @@ class BaseAgent(ABC):
         self.llm_config = llm_config
         self.llm = self._initialize_llm()
     
-    def _initialize_llm(self) -> BaseLLM:
+    def _initialize_llm(self) -> Union[ChatOpenAI, ChatAnthropic]:
         """
         Initialize the appropriate LLM based on configuration.
         
