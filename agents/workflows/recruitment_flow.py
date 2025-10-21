@@ -1,9 +1,7 @@
 """Recruitment Flow Orchestrator
-
 This module defines the end-to-end recruitment workflow, from resume parsing
 to candidate scoring and email notification.
 """
-
 import logging
 from typing import Dict, List, Optional, Any
 from enum import Enum
@@ -12,7 +10,6 @@ from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
 
 class FlowStage(str, Enum):
     """Stages in the recruitment flow."""
@@ -25,7 +22,6 @@ class FlowStage(str, Enum):
     NOTIFY = "notify"
     COMPLETE = "complete"
 
-
 class FlowStatus(str, Enum):
     """Status of a flow execution."""
     PENDING = "pending"
@@ -33,7 +29,6 @@ class FlowStatus(str, Enum):
     PAUSED = "paused"
     SUCCESS = "success"
     FAILED = "failed"
-
 
 @dataclass
 class FlowContext:
@@ -56,7 +51,6 @@ class FlowContext:
             self.errors = []
         if self.metadata is None:
             self.metadata = {}
-
 
 class RecruitmentFlow:
     """Orchestrate the end-to-end recruitment process."""
@@ -305,6 +299,51 @@ class RecruitmentFlow:
         
         return context
 
+def main_workflow(flow_id: str = "main-001", resume_path: str = "resume.pdf", job_id: str = "job-123") -> FlowContext:
+    """
+    Main workflow function that creates mock components and runs the recruitment flow.
+    This function is importable for use in main.py.
+    
+    Args:
+        flow_id: Unique identifier for this flow
+        resume_path: Path to resume file
+        job_id: Job posting identifier
+        
+    Returns:
+        Final FlowContext object
+    """
+    # Mock components
+    class MockParser:
+        def parse_pdf(self, path):
+            return {"contact_info": {"email": "test@example.com"}}
+    
+    class MockEnricher:
+        def enrich(self, url):
+            return {"years_experience": 5}
+    
+    class MockAnalyzer:
+        def analyze(self, resume_data, job_id):
+            return {"summary": "Strong candidate"}
+    
+    class MockScorer:
+        def score(self, analysis, enriched_data, job_id):
+            return 0.85
+    
+    class MockNotifier:
+        def notify(self, data):
+            print(f"Notification: {data}")
+    
+    # Create RecruitmentFlow instance
+    flow = RecruitmentFlow(
+        MockParser(), MockEnricher(), MockAnalyzer(),
+        MockScorer(), MockNotifier()
+    )
+    
+    # Run the flow
+    ctx = flow.start_flow(flow_id, resume_path, job_id)
+    ctx = flow.execute_flow(ctx)
+    
+    return ctx
 
 if __name__ == "__main__":
     # Mock components for testing
