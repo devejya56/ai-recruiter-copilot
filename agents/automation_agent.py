@@ -10,8 +10,8 @@ import json
 import logging
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, asdict
-
 from dotenv import load_dotenv
+from datetime import datetime, timedelta
 
 # Load environment variables
 load_dotenv()
@@ -24,7 +24,6 @@ logger = logging.getLogger(__name__)
 @dataclass
 class CandidateProfile:
     """Structured representation of a parsed candidate profile.
-
     Attributes:
         name: Candidate full name, if detected
         email: Candidate email address, if detected
@@ -47,375 +46,275 @@ class CandidateProfile:
 
 class AutomationAgent:
     """Agent for triggering and managing Composio workflows.
-
     This agent handles the integration with Composio's workflow system,
     providing a clean interface to trigger workflows with input data.
     It manages API authentication and provides robust error handling.
 
-    Attributes:
-        api_key (str): Composio API key for authentication (required)
-        workflow_id (str): Default workflow ID to use (optional)
-
-    Raises:
-        ValueError: If COMPOSIO_API_KEY is not set in environment
+    It also includes helper methods for multi-app orchestration such as
+    scheduling interviews on Calendar and updating candidate records in
+    Google Sheets via Composio.
     """
 
     def __init__(self):
-        """Initialize the AutomationAgent with Composio credentials.
+        self.auth_config_id = os.getenv("COMPOSIO_AUTH_CONFIG_ID")
+        self.connected_account_id = os.getenv("COMPOSIO_CONNECTED_ACCOUNT_ID")
 
-        Reads configuration from environment variables:
-        - COMPOSIO_API_KEY (required): API key for Composio authentication
-        - COMPOSIO_WORKFLOW_ID (optional): Default workflow ID to use
-        - COMPOSIO_AUTH_CONFIG_ID (optional): Auth config for connected app
-        - COMPOSIO_CONNECTED_ACCOUNT_ID (optional): Connected account id
+        # Calendar auth IDs (with provided defaults)
+        self.calendar_ac_id = os.getenv("CALENDAR_AC_ID", "ac_1yKLf7OF2IUO")
+        self.calendar_ca_id = os.getenv("CALENDAR_CA_ID", "ca_E7xe6Jp2R_yR")
+        self.calendar_pg_id = os.getenv("CALENDAR_PG_ID", "pg-test-1fa290b1-5b25-4c36-92ef-f2ec447cd721")
 
-        Raises:
-            ValueError: If COMPOSIO_API_KEY environment variable is not set
-        """
-        self.api_key = os.getenv('COMPOSIO_API_KEY')
-        self.workflow_id = os.getenv('COMPOSIO_WORKFLOW_ID')
-        self.auth_config_id = os.getenv('COMPOSIO_AUTH_CONFIG_ID')
-        self.connected_account_id = os.getenv('COMPOSIO_CONNECTED_ACCOUNT_ID')
+        # Sheets auth IDs (with provided defaults)
+        self.sheets_ac_id = os.getenv("SHEETS_AC_ID", "ac_9l1YOPV1YGgz")
+        self.sheets_ca_id = os.getenv("SHEETS_CA_ID", "ca_xbZ9WD5rHO1Y")
+        self.sheets_pg_id = os.getenv("SHEETS_PG_ID", "pg-test-1fa290b1-5b25-4c36-92ef-f2ec447cd721")
 
-        if not self.api_key:
-            raise ValueError(
-                "COMPOSIO_API_KEY environment variable is required. "
-                "Please set it in your .env file."
-            )
+        # Sheet and calendar configs
+        self.sheets_spreadsheet_id = os.getenv("SHEETS_SPREADSHEET_ID")
+        self.sheets_tab_name = os.getenv("SHEETS_TAB_NAME", "Candidates")
+        self.calendar_primary_id = os.getenv("GOOGLE_CALENDAR_ID", "primary")
+        self.default_interview_duration_minutes = int(os.getenv("DEFAULT_INTERVIEW_DURATION_MIN", "45"))
+        self.timezone = os.getenv("DEFAULT_TIMEZONE", "UTC")
 
-        logger.info("AutomationAgent initialized successfully")
-        if self.workflow_id:
-            logger.info(f"Default workflow ID: {self.workflow_id}")
-        else:
-            logger.info("No default workflow ID set")
+        self._composio_client = None
 
-    def run_workflow(
-        self,
-        input_data: Dict[str, Any],
-        workflow_id: Optional[str] = None
-    ) -> Dict[str, Any]:
-        """Trigger a Composio workflow with the provided input data.
-
-        This method sends a request to trigger a Composio workflow with the
-        specified input data. It handles authentication, request formatting,
-        and error handling.
-
-        Args:
-            input_data (Dict[str, Any]): Input data to pass to the workflow.
-                Should be a dictionary containing workflow-specific parameters.
-            workflow_id (Optional[str]): Specific workflow ID to trigger.
-                If not provided, uses the default workflow_id from initialization.
-
-        Returns:
-            Dict[str, Any]: Response from the Composio API containing:
-                - status: Execution status
-                - workflow_id: ID of the executed workflow
-                - execution_id: Unique execution identifier
-                - result: Workflow execution result (if available)
-
-        Raises:
-            ValueError: If no workflow_id is provided and no default is set
-            ConnectionError: If unable to connect to Composio API
-            RuntimeError: If the API returns an error response
-
-        Example:
-            >>> agent = AutomationAgent()
-            >>> result = agent.run_workflow(
-            ...     input_data={'candidate': 'John Doe', 'role': 'Engineer'},
-            ...     workflow_id='workflow_123'
-            ... )
-            >>> print(result['status'])
-            'success'
-        """
-        # Determine which workflow ID to use
-        target_workflow_id = workflow_id or self.workflow_id
-
-        if not target_workflow_id:
-            raise ValueError(
-                "No workflow_id provided. Either pass workflow_id as parameter "
-                "or set COMPOSIO_WORKFLOW_ID in environment variables."
-            )
-
-        logger.info(f"Triggering workflow: {target_workflow_id}")
-        logger.debug(f"Input data: {input_data}")
-
-        try:
-            # Import composio client (lazy import to avoid dependency issues)
+    def _get_composio_client(self):
+        if self._composio_client is None:
             try:
                 from composio import Composio
-            except ImportError:
-                raise ImportError(
-                    "Composio package not found. Install it with: pip install composio"
-                )
-
-            # Initialize Composio client
-            client = Composio(api_key=self.api_key)
-
-            # Trigger the workflow
-            logger.info("Sending workflow execution request...")
-            response = client.workflows.execute(
-                workflow_id=target_workflow_id,
-                input_data=input_data
-            )
-
-            logger.info(f"Workflow triggered successfully: {response.get('execution_id', 'N/A')}")
-            return {
-                'status': 'success',
-                'workflow_id': target_workflow_id,
-                'execution_id': response.get('execution_id'),
-                'result': response.get('result'),
-                'message': 'Workflow executed successfully'
-            }
-
-        except ImportError as e:
-            logger.error(f"Import error: {str(e)}")
-            raise
-
-        except ConnectionError as e:
-            logger.error(f"Connection error while accessing Composio API: {str(e)}")
-            raise ConnectionError(
-                f"Failed to connect to Composio API: {str(e)}"
-            )
-
-        except Exception as e:
-            logger.error(f"Error executing workflow: {str(e)}")
-            raise RuntimeError(
-                f"Workflow execution failed: {str(e)}"
-            )
-
-    def get_workflow_status(self, execution_id: str) -> Dict[str, Any]:
-        """Get the status of a workflow execution.
-
-        Args:
-            execution_id (str): The execution ID returned from run_workflow
-
-        Returns:
-            Dict[str, Any]: Current status of the workflow execution
-
-        Raises:
-            RuntimeError: If unable to retrieve workflow status
-        """
-        logger.info(f"Checking status for execution: {execution_id}")
-
-        try:
-            from composio import Composio
-
-            client = Composio(api_key=self.api_key)
-            status = client.workflows.get_execution_status(execution_id)
-
-            logger.info(f"Status retrieved: {status.get('state', 'unknown')}")
-            return status
-
-        except Exception as e:
-            logger.error(f"Error retrieving workflow status: {str(e)}")
-            raise RuntimeError(
-                f"Failed to get workflow status: {str(e)}"
-            )
-
-    def parse_gmail_resumes(self, query: Optional[str] = None, max_messages: int = 50) -> List[Dict[str, Any]]:
-        """Fetch resumes from Gmail via Composio and extract basic candidate profiles.
-
-        This method uses the Composio Gmail tool with a connected Google account to
-        search for recent emails that contain resume-like attachments (PDF or DOCX),
-        downloads those attachments via the tool, performs simple text extraction,
-        and parses basic candidate details such as name, email, and phone.
-
-        Environment variables used:
-        - COMPOSIO_AUTH_CONFIG_ID: The Composio auth configuration ID for Gmail
-        - COMPOSIO_CONNECTED_ACCOUNT_ID: The connected account ID for Gmail
-
-        Args:
-            query: Optional Gmail search query. If not provided, a default query is used
-                to find messages with PDF/DOCX attachments likely to be resumes.
-            max_messages: Maximum number of messages to scan.
-
-        Returns:
-            List[Dict[str, Any]]: List of candidate profiles with parsed fields and metadata.
-
-        Notes:
-            - This is a lightweight parser intended for quick triage. For production,
-              consider richer parsing libraries and ML-based resume parsing.
-            - Requires that your Composio project has Gmail connected and authorized.
-        """
-        # Lazy imports for optional dependencies
-        try:
-            from composio import Composio
-        except ImportError:
-            raise ImportError("Composio package not found. Install it with: pip install composio")
-
-        # Validate connected account configuration
-        if not self.auth_config_id or not self.connected_account_id:
-            raise ValueError(
-                "COMPOSIO_AUTH_CONFIG_ID and COMPOSIO_CONNECTED_ACCOUNT_ID are required to use Gmail tool."
-            )
-
-        client = Composio(api_key=self.api_key)
-
-        # Default Gmail search query to find resume attachments
-        default_query = (
-            'has:attachment (filename:pdf OR filename:docx OR filename:doc) '
-            '(-in:chats) newer_than:365d'
-        )
-        gmail_query = query or default_query
-
-        # Helper regexes for parsing
-        email_re = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
-        phone_re = re.compile(r"(?:(?:\+?\d{1,3}[\s-]?)?(?:\(?\d{3}\)?[\s-]?)?\d{3}[\s-]?\d{4})")
-        name_hint_re = re.compile(r"(?i)name\s*[:\-]\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+){0,2})")
-
-        def extract_text_from_bytes(data: bytes, ext: str) -> str:
-            """Best-effort text extraction for pdf/docx/doc without heavy deps.
-
-            - For PDF: uses a naive bytes->text fallback (may be limited)
-            - For DOCX: attempts to unzip and read document.xml text
-            - For others: decode as utf-8 with replacement
-            """
-            try:
-                if ext.lower() == 'pdf':
-                    # Minimalistic heuristic extraction; recommend pdfminer.six for quality
-                    try:
-                        import pdfminer.high_level as pdf_high
-                        with io.BytesIO(data) as bio:
-                            return pdf_high.extract_text(bio) or ''
-                    except Exception:
-                        return data.decode('latin-1', errors='ignore')
-                if ext.lower() == 'docx':
-                    import zipfile
-                    with io.BytesIO(data) as bio:
-                        with zipfile.ZipFile(bio) as zf:
-                            xml = zf.read('word/document.xml').decode('utf-8', errors='ignore')
-                            # Strip XML tags crudely
-                            return re.sub(r'<[^>]+>', ' ', xml)
-                # Fallback
-                return data.decode('utf-8', errors='ignore')
+                self._composio_client = Composio()
             except Exception as e:
-                logger.debug(f"Extraction failed for .{ext}: {e}")
-                return ''
+                logger.error(f"Failed to initialize Composio client: {e}")
+                raise
+        return self._composio_client
 
-        def parse_fields(text: str) -> Dict[str, Optional[str]]:
-            email = (email_re.search(text) or [None]) if isinstance(email_re.search(text), tuple) else email_re.search(text)
-            email_val = email.group(0) if email else None
-            phone = phone_re.search(text)
-            phone_val = phone.group(0) if phone else None
-            name_match = name_hint_re.search(text)
-            name_val = name_match.group(1) if name_match else None
-            return {"name": name_val, "email": email_val, "phone": phone_val}
+    def schedule_interview_in_calendar(self, candidate: Dict[str, Any], interviewer: Dict[str, Any], datetime_obj: datetime) -> Dict[str, Any]:
+        """Schedule an interview event in Google Calendar using Composio.
 
-        results: List[Dict[str, Any]] = []
+        - Auth: uses CALENDAR_AC_ID, CALENDAR_CA_ID, CALENDAR_PG_ID from env.
+        - Returns event details from provider on success.
+        - Raises ValueError for bad inputs and RuntimeError for provider/SDK failures.
+        """
+        if not candidate or not interviewer:
+            raise ValueError("candidate and interviewer are required")
+        if not candidate.get("email") or not interviewer.get("email"):
+            raise ValueError("candidate.email and interviewer.email are required")
 
-        # Use Composio Gmail tool via tools API
         try:
-            # 1) Search messages
-            logger.info("Searching Gmail messages with resume attachments via Composio tool...")
-            search_resp = client.tools.execute(
-                tool_name="gmail_search_messages",
-                input_params={
-                    "q": gmail_query,
-                    "maxResults": max_messages,
-                },
-                auth_config_id=self.auth_config_id,
-                connected_account_id=self.connected_account_id,
-            )
-
-            messages = []
-            if isinstance(search_resp, dict):
-                # Composio often wraps tool response under 'result' or returns raw
-                messages = search_resp.get('result') or search_resp.get('messages') or []
-            elif isinstance(search_resp, list):
-                messages = search_resp
-
-            # Normalize to list of dicts with id/threadId
-            normalized = []
-            for m in messages:
-                if isinstance(m, dict) and (m.get('id') or m.get('messageId')):
-                    normalized.append(m)
-                elif isinstance(m, str):
-                    normalized.append({"id": m})
-            messages = normalized
-
-            logger.info(f"Found {len(messages)} messages to inspect")
-
-            # 2) For each message, list attachments and download resume-like files
-            for msg in messages:
-                message_id = msg.get('id') or msg.get('messageId')
-                if not message_id:
-                    continue
-
-                # List attachments for the message
-                att_list_resp = client.tools.execute(
-                    tool_name="gmail_list_attachments",
-                    input_params={"messageId": message_id},
-                    auth_config_id=self.auth_config_id,
-                    connected_account_id=self.connected_account_id,
-                )
-                attachments = []
-                if isinstance(att_list_resp, dict):
-                    attachments = att_list_resp.get('result') or att_list_resp.get('attachments') or []
-                elif isinstance(att_list_resp, list):
-                    attachments = att_list_resp
-
-                for att in attachments:
-                    filename = att.get('filename') or ''
-                    att_id = att.get('attachmentId') or att.get('id')
-                    if not filename or not att_id:
-                        continue
-
-                    ext = filename.split('.')[-1].lower()
-                    if ext not in {"pdf", "docx", "doc"}:
-                        continue
-
-                    # Download attachment bytes
-                    dl_resp = client.tools.execute(
-                        tool_name="gmail_get_attachment",
-                        input_params={
-                            "messageId": message_id,
-                            "attachmentId": att_id,
-                        },
-                        auth_config_id=self.auth_config_id,
-                        connected_account_id=self.connected_account_id,
-                    )
-
-                    # Composio may base64-encode or return bytes/JSON
-                    data_bytes: Optional[bytes] = None
-                    if isinstance(dl_resp, dict):
-                        payload = dl_resp.get('result') or dl_resp
-                        # Try common fields: 'data' base64, or 'content' bytes
-                        b64 = payload.get('data') if isinstance(payload, dict) else None
-                        if b64:
-                            import base64
-                            try:
-                                data_bytes = base64.b64decode(b64)
-                            except Exception:
-                                data_bytes = None
-                        content = payload.get('content') if isinstance(payload, dict) else None
-                        if content and data_bytes is None:
-                            if isinstance(content, str):
-                                data_bytes = content.encode('latin-1', errors='ignore')
-                            elif isinstance(content, (bytes, bytearray)):
-                                data_bytes = bytes(content)
-                    elif isinstance(dl_resp, (bytes, bytearray)):
-                        data_bytes = bytes(dl_resp)
-
-                    if not data_bytes:
-                        logger.debug("Skipping attachment due to empty content")
-                        continue
-
-                    # Extract text and parse
-                    text = extract_text_from_bytes(data_bytes, ext)
-                    fields = parse_fields(text)
-
-                    profile = CandidateProfile(
-                        name=fields.get('name'),
-                        email=fields.get('email'),
-                        phone=fields.get('phone'),
-                        source_email_id=message_id,
-                        attachment_name=filename,
-                        filetype=ext,
-                        raw_text_preview=(text[:500] if text else None),
-                        metadata={"chars": len(text)}
-                    )
-                    results.append(asdict(profile))
-
+            start_dt = datetime_obj
+            if start_dt.tzinfo is None:
+                import pytz
+                start_dt = pytz.timezone(self.timezone).localize(start_dt)
+            end_dt = start_dt + timedelta(minutes=self.default_interview_duration_minutes)
         except Exception as e:
-            logger.error(f"Failed to parse resumes from Gmail: {e}")
-            raise RuntimeError
+            raise ValueError(f"Invalid datetime provided: {e}")
+
+        title = f"Interview: {candidate.get('name') or candidate.get('email')} x {interviewer.get('name') or interviewer.get('email')}"
+        description = (
+            f"Interview between {candidate.get('name') or candidate.get('email')} and {interviewer.get('name') or interviewer.get('email')}\n"
+            f"Created by AutomationAgent via Composio."
+        )
+        attendees = [
+            {"email": candidate.get("email"), "displayName": candidate.get("name")},
+            {"email": interviewer.get("email"), "displayName": interviewer.get("name")},
+        ]
+        body = {
+            "summary": title,
+            "description": description,
+            "start": {"dateTime": start_dt.isoformat(), "timeZone": self.timezone},
+            "end": {"dateTime": end_dt.isoformat(), "timeZone": self.timezone},
+            "attendees": attendees,
+            "conferenceData": {"createRequest": {"requestId": f"req-{int(start_dt.timestamp())}"}},
+        }
+
+        client = self._get_composio_client()
+        try:
+            resp = client.execute(
+                provider="google_calendar",
+                tool_name="calendar_events_insert",
+                input_params={
+                    "calendarId": self.calendar_primary_id,
+                    "body": body,
+                    "sendUpdates": "all",
+                    "conferenceDataVersion": 1,
+                },
+                auth_config_id=self.calendar_ac_id,
+                connected_account_id=self.calendar_ca_id,
+                project_id=self.calendar_pg_id,
+            )
+        except Exception as e:
+            logger.error(f"Failed to create calendar event via Composio: {e}")
+            raise RuntimeError("Calendar scheduling failed")
+
+        event = resp.get("result", resp) if isinstance(resp, dict) else resp
+        logger.info("Scheduled interview event: %s", json.dumps(event, default=str))
+        return event
+
+    def update_candidate_in_sheet(self, candidate: Dict[str, Any]) -> Dict[str, Any]:
+        """Upsert candidate in Google Sheets using Composio.
+
+        - Looks up candidate by Email column in the configured tab.
+        - Updates row if found; appends new if not found.
+        - Auth: uses SHEETS_AC_ID, SHEETS_CA_ID, SHEETS_PG_ID from env.
+        - Requires SHEETS_SPREADSHEET_ID and optionally SHEETS_TAB_NAME.
+        """
+        if not candidate or not candidate.get("email"):
+            raise ValueError("candidate.email is required")
+        if not self.sheets_spreadsheet_id:
+            raise ValueError("SHEETS_SPREADSHEET_ID must be set in environment")
+
+        email = candidate.get("email")
+        columns = [
+            "Email", "Name", "Phone", "Interview Status", "Last Updated", "Source Email Id", "Attachment Name", "Filetype"
+        ]
+
+        def row_from_candidate(c: Dict[str, Any]) -> List[Any]:
+            now_str = datetime.utcnow().isoformat()
+            return [
+                c.get("email"),
+                c.get("name"),
+                c.get("phone"),
+                c.get("interview_status") or c.get("status"),
+                now_str,
+                c.get("source_email_id"),
+                c.get("attachment_name"),
+                c.get("filetype"),
+            ]
+
+        client = self._get_composio_client()
+
+        # Read current values
+        try:
+            read_resp = client.execute(
+                provider="google_sheets",
+                tool_name="sheets_spreadsheets_values_get",
+                input_params={
+                    "spreadsheetId": self.sheets_spreadsheet_id,
+                    "range": f"{self.sheets_tab_name}!A1:Z",
+                },
+                auth_config_id=self.sheets_ac_id,
+                connected_account_id=self.sheets_ca_id,
+                project_id=self.sheets_pg_id,
+            )
+        except Exception as e:
+            logger.error(f"Failed reading sheet: {e}")
+            raise RuntimeError("Sheets read failed")
+
+        values = []
+        payload = read_resp.get("result", read_resp) if isinstance(read_resp, dict) else read_resp
+        if isinstance(payload, dict):
+            values = payload.get("values") or []
+
+        header = values[0] if values else []
+        need_header = not header or header[:len(columns)] != columns
+
+        match_index = None
+        for idx, row in enumerate(values[1:] if values else []):
+            if row and len(row) > 0 and isinstance(row[0], str) and row[0].strip().lower() == email.strip().lower():
+                match_index = idx + 1
+                break
+
+        row_values = row_from_candidate(candidate)
+
+        try:
+            if need_header and not values:
+                batch_body = {
+                    "valueInputOption": "USER_ENTERED",
+                    "data": [
+                        {"range": f"{self.sheets_tab_name}!A1:H1", "values": [columns]},
+                        {"range": f"{self.sheets_tab_name}!A2:H2", "values": [row_values]},
+                    ],
+                }
+                write_resp = client.execute(
+                    provider="google_sheets",
+                    tool_name="sheets_spreadsheets_values_batchUpdate",
+                    input_params={
+                        "spreadsheetId": self.sheets_spreadsheet_id,
+                        "body": batch_body,
+                    },
+                    auth_config_id=self.sheets_ac_id,
+                    connected_account_id=self.sheets_ca_id,
+                    project_id=self.sheets_pg_id,
+                )
+            elif need_header and values:
+                _ = client.execute(
+                    provider="google_sheets",
+                    tool_name="sheets_spreadsheets_values_update",
+                    input_params={
+                        "spreadsheetId": self.sheets_spreadsheet_id,
+                        "range": f"{self.sheets_tab_name}!A1:H1",
+                        "valueInputOption": "RAW",
+                        "body": {"values": [columns]},
+                    },
+                    auth_config_id=self.sheets_ac_id,
+                    connected_account_id=self.sheets_ca_id,
+                    project_id=self.sheets_pg_id,
+                )
+                if match_index is None:
+                    write_resp = client.execute(
+                        provider="google_sheets",
+                        tool_name="sheets_spreadsheets_values_append",
+                        input_params={
+                            "spreadsheetId": self.sheets_spreadsheet_id,
+                            "range": f"{self.sheets_tab_name}!A2:H2",
+                            "valueInputOption": "USER_ENTERED",
+                            "insertDataOption": "INSERT_ROWS",
+                            "body": {"values": [row_values]},
+                        },
+                        auth_config_id=self.sheets_ac_id,
+                        connected_account_id=self.sheets_ca_id,
+                        project_id=self.sheets_pg_id,
+                    )
+                else:
+                    update_range = f"{self.sheets_tab_name}!A{match_index+1}:H{match_index+1}"
+                    write_resp = client.execute(
+                        provider="google_sheets",
+                        tool_name="sheets_spreadsheets_values_update",
+                        input_params={
+                            "spreadsheetId": self.sheets_spreadsheet_id,
+                            "range": update_range,
+                            "valueInputOption": "USER_ENTERED",
+                            "body": {"values": [row_values]},
+                        },
+                        auth_config_id=self.sheets_ac_id,
+                        connected_account_id=self.sheets_ca_id,
+                        project_id=self.sheets_pg_id,
+                    )
+            else:
+                if match_index is None:
+                    write_resp = client.execute(
+                        provider="google_sheets",
+                        tool_name="sheets_spreadsheets_values_append",
+                        input_params={
+                            "spreadsheetId": self.sheets_spreadsheet_id,
+                            "range": f"{self.sheets_tab_name}!A2:H2",
+                            "valueInputOption": "USER_ENTERED",
+                            "insertDataOption": "INSERT_ROWS",
+                            "body": {"values": [row_values]},
+                        },
+                        auth_config_id=self.sheets_ac_id,
+                        connected_account_id=self.sheets_ca_id,
+                        project_id=self.sheets_pg_id,
+                    )
+                else:
+                    update_range = f"{self.sheets_tab_name}!A{match_index+1}:H{match_index+1}"
+                    write_resp = client.execute(
+                        provider="google_sheets",
+                        tool_name="sheets_spreadsheets_values_update",
+                        input_params={
+                            "spreadsheetId": self.sheets_spreadsheet_id,
+                            "range": update_range,
+                            "valueInputOption": "USER_ENTERED",
+                            "body": {"values": [row_values]},
+                        },
+                        auth_config_id=self.sheets_ac_id,
+                        connected_account_id=self.sheets_ca_id,
+                        project_id=self.sheets_pg_id,
+                    )
+        except Exception as e:
+            logger.error(f"Failed writing to sheet: {e}")
+            raise RuntimeError("Sheets write failed")
+
+        result = write_resp.get("result", write_resp) if isinstance(write_resp, dict) else write_resp
+        logger.info("Sheet upsert result: %s", json.dumps(result, default=str))
+        return result
