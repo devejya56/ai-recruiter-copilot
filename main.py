@@ -7,11 +7,20 @@ This script orchestrates the complete recruitment workflow:
 3. For each candidate: schedule interviews and update status
 4. Print results with error handling
 """
+
+# Load environment variables FIRST, before any other imports that may use them
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+# Debug print to verify SPREADSHEET_ID is loaded
+print("Loaded Spreadsheet ID:", os.getenv("SPREADSHEET_ID"))
+
 import sys
 import traceback
 from typing import List, Dict, Any
 from datetime import datetime, timedelta
-
 from agents.automation_agent import AutomationAgent
 
 def main():
