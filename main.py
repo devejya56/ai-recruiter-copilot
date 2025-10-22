@@ -10,7 +10,6 @@ This script orchestrates the complete recruitment workflow:
 # Load environment variables FIRST, before any other imports that may use them
 from dotenv import load_dotenv
 import os
-
 load_dotenv()
 spreadsheet_id = os.getenv("SPREADSHEET_ID")
 
@@ -18,8 +17,8 @@ import sys
 import traceback
 from typing import List, Dict, Any
 from datetime import datetime, timedelta
-from agents.automation_agent import AutomationAgent
 
+from agents.automation_agent import AutomationAgent
 
 def print_banner(text: str, emoji: str = "🚀"):
     """Print a styled banner for major sections."""
@@ -28,12 +27,10 @@ def print_banner(text: str, emoji: str = "🚀"):
     print(f"{emoji}  {text.center(width - 4)}  {emoji}")
     print("=" * width)
 
-
 def print_section(text: str, emoji: str = "📋"):
     """Print a section header."""
     print(f"\n{emoji} {text}")
     print("-" * 50)
-
 
 def print_candidate_status(candidate_num: int, name: str, email: str, status: str, interview_date: str = "N/A"):
     """Print a compact one-block summary for a candidate."""
@@ -47,13 +44,11 @@ def print_candidate_status(candidate_num: int, name: str, email: str, status: st
     print(f"     Email: {email}")
     print(f"     Status: {status} | Interview: {interview_date}")
 
-
 def print_summary(total: int, successful: int, failed: int):
     """Print final summary statistics."""
     print("\n" + "=" * 60)
     print(f"📊 Summary: {successful}/{total} successful, {failed} failed")
     print("=" * 60 + "\n")
-
 
 def main():
     """
@@ -99,6 +94,7 @@ def main():
                     interview_date = interview_date.replace(hour=10, minute=0, second=0, microsecond=0)
                     interview_date_str = interview_date.strftime("%Y-%m-%d %H:%M")
                     
+                    # Pass datetime object (not string) to schedule_interview_in_calendar
                     schedule_result = automation_agent.schedule_interview_in_calendar(
                         candidate_name=name,
                         candidate_email=email,
@@ -124,7 +120,8 @@ def main():
                         candidate_email=email,
                         status=scheduling_status,
                         interview_date=interview_date_str,
-                        spreadsheet_id=spreadsheet_id
+                        spreadsheet_id=spreadsheet_id,
+                        range_name="'Candidates'!A1:G100"
                     )
                 except Exception as update_error:
                     print(f"  ✗ Error updating sheet for {name}: {str(update_error)}")
@@ -150,7 +147,6 @@ def main():
         print(f"\n✗ Fatal error in main workflow: {str(e)}")
         traceback.print_exc()
         sys.exit(1)
-
 
 if __name__ == "__main__":
     main()
