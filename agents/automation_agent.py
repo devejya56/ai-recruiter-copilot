@@ -26,251 +26,197 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-
 @dataclass
 class CandidateProfile:
     """Structured representation of a parsed candidate profile.
-
+    
     Attributes:
         name: Candidate full name, if detected
         email: Candidate email address, if detected
         phone: Candidate phone number, if detected
-        source_email_id: The Gmail message/thread identifier
-        attachment_name: The original resume filename
-        filetype: Attachment file extension
-        raw_text_preview: First 500 chars of extracted text for debugging
-        metadata: Any additional fields parsed
+        skills: List of identified skills
+        experience: Parsed years of experience
+        education: Educational background info
+        resume_text: Full text extracted from resume
+        status: Current candidate status (e.g., "New", "Screened", "Interviewed")
     """
     name: Optional[str] = None
     email: Optional[str] = None
     phone: Optional[str] = None
-    source_email_id: Optional[str] = None
-    attachment_name: Optional[str] = None
-    filetype: Optional[str] = None
-    raw_text_preview: Optional[str] = None
-    metadata: Dict[str, Any] | None = None
-
+    skills: Optional[List[str]] = None
+    experience: Optional[str] = None
+    education: Optional[str] = None
+    resume_text: Optional[str] = None
+    status: str = "New"
 
 class AutomationAgent:
-    """Agent for triggering and managing Composio workflows.
-
-    This agent handles the integration with Composio's workflow system,
-    managing configuration, error handling, and workflow execution.
-    """
-
-    def __init__(self, config: Optional[Dict[str, Any]] = None):
-        """Initialize the automation agent.
-
-        Args:
-            config: Optional configuration dictionary with workflow settings
-        """
-        self.config = config or {}
-        self.composio_api_key = os.getenv("COMPOSIO_API_KEY")
-        self.sheets_spreadsheet_id = os.getenv("SHEETS_SPREADSHEET_ID")
-        self.sheets_tab_name = os.getenv("SHEETS_TAB_NAME", "Candidates")
-        self.sheets_ac_id = os.getenv("SHEETS_AUTH_CONFIG_ID")
-        self.sheets_ca_id = os.getenv("SHEETS_CONNECTED_ACCOUNT_ID")
-        self.sheets_pg_id = os.getenv("SHEETS_PROJECT_ID")
-        self.gmail_ac_id = os.getenv("GMAIL_AUTH_CONFIG_ID")
-        self.gmail_ca_id = os.getenv("GMAIL_CONNECTED_ACCOUNT_ID")
-        self.gmail_pg_id = os.getenv("GMAIL_PROJECT_ID")
-
-        # Initialize Google Calendar and Sheets services using OAuth2
-        self.calendar_service = None
-        self.sheets_service = None
-        self._initialize_google_services()
-
-        if not self.composio_api_key:
-            raise ValueError("COMPOSIO_API_KEY not found in environment")
-
-        logger.info("AutomationAgent initialized")
-
-    def _initialize_google_services(self):
-        """Initialize Google Calendar and Sheets API services using OAuth2."""
-        SCOPES = [
-            'https://www.googleapis.com/auth/gmail.readonly',
-            'https://www.googleapis.com/auth/calendar',
-            'https://www.googleapis.com/auth/spreadsheets'
-        ]
-
-        creds = None
-        # Load existing token if available
-        if os.path.exists('token.json'):
-            creds = Credentials.from_authorized_user_file('token.json', SCOPES)
-
-        # Refresh or generate new credentials if needed
-        if not creds or not creds.valid:
-            if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
-                if not os.path.exists('credentials.json'):
-                    logger.warning("credentials.json not found. Calendar and Sheets services not initialized.")
-                    return
-                flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
-                creds = flow.run_local_server(port=0)
-
-            # Save credentials for future use
-            with open('token.json', 'w') as token:
-                token.write(creds.to_json())
-
+    
+    # OAuth2 scopes required for Google API access
+    SCOPES = [
+        'https://www.googleapis.com/auth/calendar',
+        'https://www.googleapis.com/auth/spreadsheets',
+        'https://www.googleapis.com/auth/gmail.readonly'
+    ]
+    
+    def __init__(self):
+        """Initialize the AutomationAgent with required services and configurations."""
         try:
-            # Build Calendar and Sheets services
+            # Get Gmail Auth Config and Connected Account IDs from environment
+            self.gmail_ac_id = os.getenv('GMAIL_AUTH_CONFIG_ID')
+            self.gmail_ca_id = os.getenv('GMAIL_CONNECTED_ACCOUNT_ID')
+            self.gmail_pg_id = os.getenv('PROJECT_ID')
+            
+            # Initialize Google services and store credentials
+            self._initialize_google_services()
+            
+            logger.info("AutomationAgent initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize AutomationAgent: {str(e)}")
+            raise
+    
+    def _initialize_google_services(self):
+        """Initialize Google Calendar and Sheets services with OAuth2 credentials."""
+        try:
+            creds = None
+            
+            # Check if token.json exists with stored credentials
+            if os.path.exists('token.json'):
+                creds = Credentials.from_authorized_user_file('token.json', self.SCOPES)
+            
+            # If credentials don't exist or are invalid, run OAuth2 flow
+            if not creds or not creds.valid:
+                if creds and creds.expired and creds.refresh_token:
+                    creds.refresh(Request())
+                else:
+                    flow = InstalledAppFlow.from_client_secrets_file(
+                        'credentials.json', self.SCOPES)
+                    creds = flow.run_local_server(port=0)
+                
+                # Save credentials for future use
+                with open('token.json', 'w') as token:
+                    token.write(creds.to_json())
+            
+            # Store credentials for reuse
+            self.creds = creds
+            
+            # Build Google API services with valid credentials
             self.calendar_service = build('calendar', 'v3', credentials=creds)
             self.sheets_service = build('sheets', 'v4', credentials=creds)
-            logger.info("Google Calendar and Sheets services initialized successfully")
+            
+            logger.info("Google services initialized successfully")
         except Exception as e:
-            logger.error(f"Failed to initialize Google services: {e}")
-
+            logger.error(f"Failed to initialize Google services: {str(e)}")
+            raise
+    
     def parse_gmail_resumes(self, days_back: int = 7) -> List[CandidateProfile]:
-        """Parse resumes from Gmail using EmailMonitor.
-
+        """Parse candidate resumes from Gmail emails.
+        
         Args:
-            days_back: Number of days to look back for resume emails (default: 7)
-
+            days_back: Number of days to look back for emails (default: 7)
+        
         Returns:
-            List of CandidateProfile objects parsed from resume emails
+            List of parsed CandidateProfile objects
         """
-        logger.info(f"Starting Gmail resume parsing for last {days_back} days")
-
         try:
-            # Initialize EmailMonitor
+            # Initialize EmailMonitor with OAuth credentials
             email_monitor = EmailMonitor(
                 auth_config_id=self.gmail_ac_id,
                 connected_account_id=self.gmail_ca_id,
-                project_id=self.gmail_pg_id
+                project_id=self.gmail_pg_id,
+                creds=self.creds  # Pass prebuilt credentials
             )
-
-            # Fetch resume emails
-            candidate_data = email_monitor.fetch_resume_emails(days_back=days_back)
-
-            logger.info(f"Successfully parsed {len(candidate_data)} candidates from Gmail")
-            return candidate_data
-
+            
+            # Fetch resume emails from Gmail
+            resume_emails = email_monitor.fetch_resume_emails(days_back=days_back)
+            
+            if not resume_emails:
+                logger.info("No resume emails found in the specified time period")
+                return []
+            
+            logger.info(f"Found {len(resume_emails)} resume emails")
+            
+            # Parse each email into a CandidateProfile
+            candidates = []
+            for email_data in resume_emails:
+                try:
+                    candidate = self._parse_single_candidate(email_data)
+                    if candidate:
+                        candidates.append(candidate)
+                except Exception as e:
+                    logger.error(f"Error parsing candidate email {email_data.get('sender_email', 'unknown')}: {str(e)}")
+                    continue
+            
+            logger.info(f"Successfully parsed {len(candidates)} candidate profiles")
+            return candidates
+        
         except Exception as e:
-            logger.error(f"Failed to parse Gmail resumes: {e}")
-            raise RuntimeError(f"Gmail resume parsing failed: {e}")
-
-    def upsert_to_sheet(self, candidate: CandidateProfile) -> Dict[str, Any]:
-        """Write or update a candidate profile in Google Sheets.
-
+            logger.error(f"Error in parse_gmail_resumes: {str(e)}")
+            return []
+    
+    def _parse_single_candidate(self, email_data: Dict[str, Any]) -> Optional[CandidateProfile]:
+        """Parse a single email into a CandidateProfile.
+        
         Args:
-            candidate: CandidateProfile object to write
-
+            email_data: Dictionary containing email information
+        
         Returns:
-            Response from the Sheets API
+            CandidateProfile object or None if parsing fails
         """
         try:
-            from composio import ComposioClient
-            client = ComposioClient(api_key=self.composio_api_key)
-
-            # Read existing sheet data
-            read_range = f"{self.sheets_tab_name}!A2:H"
-            read_resp = client.execute(
-                provider="google_sheets",
-                tool_name="sheets_spreadsheets_values_get",
-                input_params={
-                    "spreadsheetId": self.sheets_spreadsheet_id,
-                    "range": read_range,
-                },
-                auth_config_id=self.sheets_ac_id,
-                connected_account_id=self.sheets_ca_id,
-                project_id=self.sheets_pg_id,
+            # Extract basic info from email
+            name = email_data.get('sender_name', 'Unknown')
+            email = email_data.get('sender_email', '')
+            
+            # Extract skills, experience, etc. from email body/attachments
+            # This is a simplified version - you'd want more sophisticated parsing
+            resume_text = email_data.get('subject', '') + ' ' + email_data.get('snippet', '')
+            
+            candidate = CandidateProfile(
+                name=name,
+                email=email,
+                resume_text=resume_text,
+                status="New"
             )
-
-            existing_values = read_resp.get("result", {}).get("values", [])
-
-            # Prepare row values
-            row_values = [
-                candidate.name or "",
-                candidate.email or "",
-                candidate.phone or "",
-                candidate.source_email_id or "",
-                candidate.attachment_name or "",
-                candidate.filetype or "",
-                candidate.raw_text_preview or "",
-                json.dumps(candidate.metadata or {}),
-            ]
-
-            # Check if candidate already exists (by email or source_email_id)
-            match_index = None
-            for i, row in enumerate(existing_values):
-                if len(row) >= 4:
-                    if (candidate.email and row[1] == candidate.email) or \
-                       (candidate.source_email_id and row[3] == candidate.source_email_id):
-                        match_index = i + 1  # +1 for header row
-                        break
-
-            # Update existing or append new
-            if match_index is not None:
-                # Update existing row
-                update_range = f"{self.sheets_tab_name}!A{match_index+1}:H{match_index+1}"
-                write_resp = client.execute(
-                    provider="google_sheets",
-                    tool_name="sheets_spreadsheets_values_update",
-                    input_params={
-                        "spreadsheetId": self.sheets_spreadsheet_id,
-                        "range": update_range,
-                        "valueInputOption": "USER_ENTERED",
-                        "body": {"values": [row_values]},
-                    },
-                    auth_config_id=self.sheets_ac_id,
-                    connected_account_id=self.sheets_ca_id,
-                    project_id=self.sheets_pg_id,
-                )
-            else:
-                write_resp = client.execute(
-                    provider="google_sheets",
-                    tool_name="sheets_spreadsheets_values_append",
-                    input_params={
-                        "spreadsheetId": self.sheets_spreadsheet_id,
-                        "range": f"{self.sheets_tab_name}!A2:H2",
-                        "valueInputOption": "USER_ENTERED",
-                        "insertDataOption": "INSERT_ROWS",
-                        "body": {"values": [row_values]},
-                    },
-                    auth_config_id=self.sheets_ac_id,
-                    connected_account_id=self.sheets_ca_id,
-                    project_id=self.sheets_pg_id,
-                )
+            
+            return candidate
+        
         except Exception as e:
-            logger.error(f"Failed writing to sheet: {e}")
-            raise RuntimeError("Sheets write failed")
-
-        result = write_resp.get("result", write_resp) if isinstance(write_resp, dict) else write_resp
-        logger.info("Sheet upsert result: %s", json.dumps(result, default=str))
-        return result
-
-    def schedule_interview_in_calendar(self, candidate_name: str, candidate_email: str, candidate_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Schedule an interview in Google Calendar."""
+            logger.error(f"Error parsing candidate data: {str(e)}")
+            return None
+    
+    def schedule_interview_in_calendar(
+        self, 
+        candidate_name: str, 
+        candidate_email: str, 
+        interview_date: str,
+        duration_minutes: int = 60
+    ) -> Dict[str, Any]:
+        """Schedule an interview in Google Calendar.
+        
+        Args:
+            candidate_name: Name of the candidate
+            candidate_email: Email address of the candidate
+            interview_date: Interview date/time in ISO format
+            duration_minutes: Duration of interview in minutes (default: 60)
+        
+        Returns:
+            Dictionary with scheduling result
+        """
         try:
-            # Use the same credentials from email_monitor
-            if not hasattr(self, 'email_monitor') or not getattr(self, 'email_monitor').creds:
-                logger.error("Calendar service not initialized - OAuth credentials missing")
-                return {
-                    'success': False,
-                    'error': 'OAuth credentials not available'
-                }
-
-            # Build calendar service
-            calendar_service = build('calendar', 'v3', credentials=self.email_monitor.creds)
-
-            # Schedule interview for 2 days from now at 10 AM
-            local_tz = pytz.timezone('America/New_York')  # Change to your timezone
-            now = datetime.now(local_tz)
-            interview_time = now + timedelta(days=2)
-            interview_time = interview_time.replace(hour=10, minute=0, second=0, microsecond=0)
-
-            # Create event
+            # Use prebuilt calendar service
+            start_time = datetime.fromisoformat(interview_date.replace('Z', '+00:00'))
+            end_time = start_time + timedelta(minutes=duration_minutes)
+            
             event = {
                 'summary': f'Interview with {candidate_name}',
-                'description': f'Scheduled interview with candidate: {candidate_name}\nEmail: {candidate_email}',
+                'description': f'Interview scheduled with candidate {candidate_name}',
                 'start': {
-                    'dateTime': interview_time.isoformat(),
-                    'timeZone': str(local_tz),
+                    'dateTime': start_time.isoformat(),
+                    'timeZone': 'UTC',
                 },
                 'end': {
-                    'dateTime': (interview_time + timedelta(hours=1)).isoformat(),
-                    'timeZone': str(local_tz),
+                    'dateTime': end_time.isoformat(),
+                    'timeZone': 'UTC',
                 },
                 'attendees': [
                     {'email': candidate_email},
@@ -283,61 +229,67 @@ class AutomationAgent:
                     ],
                 },
             }
-
-            # Insert event
-            created_event = calendar_service.events().insert(calendarId='primary', body=event).execute()
-
-            logger.info(f"Interview scheduled for {candidate_name} at {interview_time}")
+            
+            # Use self.calendar_service directly - no need to rebuild
+            event_result = self.calendar_service.events().insert(
+                calendarId='primary',
+                body=event,
+                sendUpdates='all'
+            ).execute()
+            
+            logger.info(f"Interview scheduled for {candidate_name}: {event_result.get('htmlLink')}")
             return {
                 'success': True,
-                'event_id': created_event.get('id'),
-                'event_link': created_event.get('htmlLink'),
-                'interview_time': interview_time.strftime('%Y-%m-%d %H:%M:%S')
+                'event_id': event_result.get('id'),
+                'event_link': event_result.get('htmlLink')
             }
-
+        
         except Exception as e:
             logger.error(f"Error scheduling interview: {str(e)}")
             return {
                 'success': False,
                 'error': str(e)
             }
-
-    def update_candidate_in_sheet(self, candidate_name: str, candidate_email: str, status: str, candidate_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Update candidate status in Google Sheets."""
+    
+    def update_candidate_in_sheet(
+        self,
+        candidate_name: str,
+        candidate_email: str,
+        status: str = "New",
+        interview_date: str = "",
+        spreadsheet_id: Optional[str] = None,
+        tab_name: str = "Candidates"
+    ) -> Dict[str, Any]:
+        """Update or add candidate information in Google Sheets.
+        
+        Args:
+            candidate_name: Name of the candidate
+            candidate_email: Email address of the candidate
+            status: Current status of the candidate
+            interview_date: Scheduled interview date (if any)
+            spreadsheet_id: ID of the Google Sheet (uses env var if not provided)
+            tab_name: Name of the sheet tab (default: "Candidates")
+        
+        Returns:
+            Dictionary with update result
+        """
         try:
-            # Use the same credentials from email_monitor
-            if not hasattr(self, 'email_monitor') or not getattr(self, 'email_monitor').creds:
-                logger.error("Sheets service not initialized - OAuth credentials missing")
-                return {
-                    'success': False,
-                    'error': 'OAuth credentials not available'
-                }
-
-            # Build sheets service
-            sheets_service = build('sheets', 'v4', credentials=self.email_monitor.creds)
-
-            spreadsheet_id = os.getenv('SHEETS_SPREADSHEET_ID')
-            tab_name = os.getenv('SHEETS_TAB_NAME', 'Candidates')
-
+            # Use prebuilt sheets service
             if not spreadsheet_id:
-                logger.error("SHEETS_SPREADSHEET_ID not set in environment variables")
-                return {
-                    'success': False,
-                    'error': 'SHEETS_SPREADSHEET_ID not configured'
-                }
-
-            # Read existing data to find if candidate exists
+                spreadsheet_id = os.getenv('SPREADSHEET_ID')
+            
+            if not spreadsheet_id:
+                raise ValueError("No spreadsheet ID provided or found in environment")
+            
+            # Get existing data to check if candidate already exists
             range_name = f'{tab_name}!A:G'
-            result = sheets_service.spreadsheets().values().get(
+            result = self.sheets_service.spreadsheets().values().get(
                 spreadsheetId=spreadsheet_id,
                 range=range_name
             ).execute()
-
+            
             values = result.get('values', [])
-
-            # Get interview date from candidate_data if available
-            interview_date = candidate_data.get('interview_time', '') if candidate_data else ''
-
+            
             # Prepare new row data
             new_row = [
                 candidate_name,
@@ -348,19 +300,19 @@ class AutomationAgent:
                 interview_date,
                 f'Auto-updated at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
             ]
-
+            
             # Check if candidate already exists
             candidate_row = None
             for idx, row in enumerate(values[1:], start=2):  # Skip header row
                 if len(row) > 1 and row[1] == candidate_email:
                     candidate_row = idx
                     break
-
+            
             if candidate_row:
                 # Update existing row
                 update_range = f'{tab_name}!A{candidate_row}:G{candidate_row}'
                 body = {'values': [new_row]}
-                sheets_service.spreadsheets().values().update(
+                self.sheets_service.spreadsheets().values().update(
                     spreadsheetId=spreadsheet_id,
                     range=update_range,
                     valueInputOption='RAW',
@@ -371,7 +323,7 @@ class AutomationAgent:
                 # Append new row
                 append_range = f'{tab_name}!A:G'
                 body = {'values': [new_row]}
-                sheets_service.spreadsheets().values().append(
+                self.sheets_service.spreadsheets().values().append(
                     spreadsheetId=spreadsheet_id,
                     range=append_range,
                     valueInputOption='RAW',
@@ -379,13 +331,13 @@ class AutomationAgent:
                     body=body
                 ).execute()
                 logger.info(f"Added new candidate {candidate_name} to sheet")
-
+            
             return {
                 'success': True,
                 'action': 'updated' if candidate_row else 'added',
                 'row': candidate_row if candidate_row else len(values) + 1
             }
-
+        
         except Exception as e:
             logger.error(f"Error updating candidate in sheet: {str(e)}")
             return {
