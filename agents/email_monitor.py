@@ -136,8 +136,10 @@ class EmailMonitor:
                         for part in parts_list:
                             if part.get('filename'):
                                 filename = part['filename']
-                                # Check if it's a resume file (PDF, DOC, DOCX)
-                                if filename.lower().endswith(('.pdf', '.doc', '.docx')):
+                                # Filter: Only select attachments with 'Resume' in filename (case-insensitive)
+                                # This ensures only files explicitly named as resumes are processed,
+                                # ignoring other PDF/DOC/DOCX attachments that may not be resumes
+                                if 'resume' in filename.lower() and filename.lower().endswith(('.pdf', '.doc', '.docx')):
                                     attachments.append({
                                         'filename': filename,
                                         'mimeType': part.get('mimeType', ''),
