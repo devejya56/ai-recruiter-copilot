@@ -92,13 +92,15 @@ def main():
                     # Calculate interview date (7 days from now at 10 AM)
                     interview_date = datetime.now() + timedelta(days=7)
                     interview_date = interview_date.replace(hour=10, minute=0, second=0, microsecond=0)
-                    interview_date_str = interview_date.strftime("%Y-%m-%d %H:%M")
                     
-                    # Pass datetime object (not string) to schedule_interview_in_calendar
+                    # Format as ISO string for both calendar and sheet
+                    interview_date_str = interview_date.isoformat()
+                    
+                    # Pass ISO string to schedule_interview_in_calendar
                     schedule_result = automation_agent.schedule_interview_in_calendar(
                         candidate_name=name,
                         candidate_email=email,
-                        interview_date=interview_date
+                        interview_date=interview_date_str
                     )
                     
                     if schedule_result:
@@ -121,7 +123,7 @@ def main():
                         status=scheduling_status,
                         interview_date=interview_date_str,
                         spreadsheet_id=spreadsheet_id,
-                        range_name="'Candidates'!A1:G100"
+                        tab_name='Candidates'
                     )
                 except Exception as update_error:
                     print(f"  ✗ Error updating sheet for {name}: {str(update_error)}")
