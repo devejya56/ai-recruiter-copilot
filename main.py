@@ -11,6 +11,7 @@ import sys
 import traceback
 from typing import List, Dict, Any
 from datetime import datetime, timedelta
+
 from agents.automation_agent import AutomationAgent
 
 def main():
@@ -35,29 +36,26 @@ def main():
         
         print(f"✓ Found {len(candidates)} candidates")
         
-        # Step 3: For each candidate, schedule interviews and update status
+        # Step 3: For each candidate, schedule interview and update status
         print("\n[Step 3] Processing candidates...")
         for i, candidate in enumerate(candidates, 1):
-            print(f"\n--- Processing Candidate {i}/{len(candidates)} ---")
             try:
-                # Print candidate info using attribute access
-                name = getattr(candidate, 'name', None) or 'Unknown'
-                email = getattr(candidate, 'email', None) or 'No email'
-                print(f"  Name: {name}")
-                print(f"  Email: {email}")
+                # Use attribute access with getattr for safer access
+                name = getattr(candidate, 'name', f'Candidate {i}')
+                email = getattr(candidate, 'email', '')
+                
+                print(f"\n--- Processing Candidate {i}/{len(candidates)}: {name} ({email}) ---")
                 
                 # Step 3.1: Schedule interview in calendar
                 print("  → Scheduling interview in calendar...")
-                
-                # Use a placeholder interview date (7 days from now at 10 AM)
-                interview_date = datetime.now() + timedelta(days=7)
-                interview_date = interview_date.replace(hour=10, minute=0, second=0, microsecond=0)
-                interview_date_str = interview_date.strftime("%Y-%m-%d %H:%M:%S")
-                
                 try:
+                    # Calculate interview date (7 days from now)
+                    interview_date = datetime.now() + timedelta(days=7)
+                    interview_date_str = interview_date.strftime("%Y-%m-%d %H:%M")
+                    
                     schedule_result = automation_agent.schedule_interview_in_calendar(
-                        name=name,
-                        email=email,
+                        candidate_name=name,
+                        candidate_email=email,
                         interview_date=interview_date_str
                     )
                     
@@ -78,8 +76,8 @@ def main():
                 print("  → Updating candidate status in sheet...")
                 try:
                     update_result = automation_agent.update_candidate_in_sheet(
-                        name=name,
-                        email=email,
+                        candidate_name=name,
+                        candidate_email=email,
                         status=scheduling_status,
                         interview_date=interview_date_str
                     )
