@@ -207,3 +207,45 @@ class AutomationAgent:
         result = write_resp.get("result", write_resp) if isinstance(write_resp, dict) else write_resp
         logger.info("Sheet upsert result: %s", json.dumps(result, default=str))
         return result
+    
+    def schedule_interview_in_calendar(self, candidate_name: str, candidate_email: str, candidate_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Schedule an interview in calendar for a candidate.
+        This is a stub implementation that returns a success response.
+        
+        Args:
+            candidate_name: Name of the candidate
+            candidate_email: Email of the candidate
+            candidate_data: Full candidate data dictionary
+        
+        Returns:
+            Dict with success status and stub message
+        """
+        logger.info(f"[STUB] schedule_interview_in_calendar called for {candidate_name} ({candidate_email})")
+        logger.info("[STUB] This method needs to be implemented to schedule calendar events")
+        return {
+            "success": True,
+            "message": "[STUB] Interview scheduling not yet implemented",
+            "candidate": candidate_name
+        }
+    
+    def update_candidate_in_sheet(self, candidate_name: str, candidate_email: str, status: str, candidate_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update candidate status in Google Sheets.
+        This is a stub implementation that returns a success response.
+        
+        Args:
+            candidate_name: Name of the candidate
+            candidate_email: Email of the candidate
+            status: Status to set (e.g., 'Interview Scheduled', 'Interview Pending')
+            candidate_data: Full candidate data dictionary
+        
+        Returns:
+            Dict with success status and stub message
+        """
+        logger.info(f"[STUB] update_candidate_in_sheet called for {candidate_name} ({candidate_email}) with status: {status}")
+        logger.info("[STUB] This method needs to be implemented to update candidate status in sheets")
+        return {
+            "success": True,
+            "message": "[STUB] Candidate status update not yet implemented",
+            "candidate": candidate_name,
+            "status": status
+        }
