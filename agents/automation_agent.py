@@ -10,7 +10,6 @@ import json
 import logging
 from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, asdict
-from dotenv import load_dotenv
 from datetime import datetime, timedelta
 from agents.email_monitor import EmailMonitor
 from googleapiclient.discovery import build
@@ -19,8 +18,7 @@ from google.auth.transport.requests import Request
 from google_auth_oauthlib.flow import InstalledAppFlow
 import pytz
 
-# Load environment variables
-load_dotenv()
+
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
