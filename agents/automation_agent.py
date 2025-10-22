@@ -16,7 +16,8 @@ from agents.email_monitor import EmailMonito
 from googleapiclient.discovery import build
 from google.oauth2.credentials import Credentials
 from google.auth.transport.requests import Request
-from google_auth_oauthlib.flow import InstalledAppFlowr
+from google_auth_oauthlib.flow import InstalledAppFlow
+import pytzr
 
 # Load environment variables
 load_dotenv()
@@ -254,115 +255,153 @@ class AutomationAgent:
         return result
     
     def schedule_interview_in_calendar(self, candidate_name: str, candidate_email: str, candidate_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Schedule an interview in Google Calendar for a candidate."""
-        if not self.calendar_service:
-            logger.error("Calendar service not initialized")
+    """Schedule an interview in Google Calendar."""
+    try:
+        # Use the same credentials from email_monitor
+        if not hasattr(self.email_monitor, 'creds') or not self.email_monitor.creds:
+            self.logger.error("Calendar service not initialized - OAuth credentials missing")
             return {
-                "success": False,
-                "message": "Calendar service unavailable",
-                "candidate": candidate_name
+                'success': False,
+                'error': 'OAuth credentials not available'
             }
-            
-        try:
-            # Create event 3 days from now at 10 AM (1 hour duration)
-            start_time = datetime.now() + timedelta(days=3)
-            start_time = start_time.replace(hour=10, minute=0, second=0, microsecond=0)
-            end_time = start_time + timedelta(hours=1)
-            
-            event = {
-                'summary': f'Interview with {candidate_name}',
-                'description': f'Technical interview with candidate {candidate_name}\nEmail: {candidate_email}',
-                'start': {
-                    'dateTime': start_time.isoformat(),
-                    'timeZone': 'UTC',
-                },
-                'end': {
-                    'dateTime': end_time.isoformat(),
-                    'timeZone': 'UTC',
-                },
-                'attendees': [
-                    {'email': candidate_email},
+        
+        # Build calendar service
+        calendar_service = build('calendar', 'v3', credentials=self.email_monitor.creds)
+        
+        # Schedule interview for 2 days from now at 10 AM
+        local_tz = pytz.timezone('America/New_York')  # Change to your timezone
+        now = datetime.now(local_tz)
+        interview_time = now + timedelta(days=2)
+        interview_time = interview_time.replace(hour=10, minute=0, second=0, microsecond=0)
+        
+        # Create event
+        event = {
+            'summary': f'Interview with {candidate_name}',
+            'description': f'Scheduled interview with candidate: {candidate_name}\nEmail: {candidate_email}',
+            'start': {
+                'dateTime': interview_time.isoformat(),
+                'timeZone': str(local_tz),
+            },
+            'end': {
+                'dateTime': (interview_time + timedelta(hours=1)).isoformat(),
+                'timeZone': str(local_tz),
+            },
+            'attendees': [
+                {'email': candidate_email},
+            ],
+            'reminders': {
+                'useDefault': False,
+                'overrides': [
+                    {'method': 'email', 'minutes': 24 * 60},
+                    {'method': 'popup', 'minutes': 30},
                 ],
-                'reminders': {
-                    'useDefault': False,
-                    'overrides': [
-                        {'method': 'email', 'minutes': 24 * 60},
-                        {'method': 'popup', 'minutes': 30},
-                    ],
-                },
-            }
-            
-            event_result = self.calendar_service.events().insert(calendarId='primary', body=event).execute()
-            logger.info(f"Interview scheduled for {candidate_name}: {event_result.get('htmlLink')}")
-            
-            return {
-                "success": True,
-                "message": f"Interview scheduled for {start_time.strftime('%Y-%m-%d %H:%M')}",
-                "candidate": candidate_name,
-                "event_link": event_result.get('htmlLink')
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to schedule interview for {candidate_name}: {e}")
-            return {
-                "success": False,
-                "message": f"Calendar scheduling failed: {str(e)}",
-                "candidate": candidate_name
-            }
+            },
+        }
+        
+        # Insert event
+        created_event = calendar_service.events().insert(calendarId='primary', body=event).execute()
+        
+        self.logger.info(f"Interview scheduled for {candidate_name} at {interview_time}")
+        return {
+            'success': True,
+            'event_id': created_event.get('id'),
+            'event_link': created_event.get('htmlLink'),
+            'interview_time': interview_time.strftime('%Y-%m-%d %H:%M:%S')
+        }
+        
+    except Exception as e:
+        self.logger.error(f"Error scheduling interview: {str(e)}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
     def update_candidate_in_sheet(self, candidate_name: str, candidate_email: str, status: str, candidate_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Update candidate status in Google Sheets."""
-        if not self.sheets_service:
-            logger.error("Sheets service not initialized")
+    """Update candidate status in Google Sheets."""
+    try:
+        # Use the same credentials from email_monitor
+        if not hasattr(self.email_monitor, 'creds') or not self.email_monitor.creds:
+            self.logger.error("Sheets service not initialized - OAuth credentials missing")
             return {
-                "success": False,
-                "message": "Sheets service unavailable",
-                "candidate": candidate_name
+                'success': False,
+                'error': 'OAuth credentials not available'
             }
-            
-        if not self.sheets_spreadsheet_id:
-            logger.error("SHEETS_SPREADSHEET_ID not configured")
+        
+        # Build sheets service
+        sheets_service = build('sheets', 'v4', credentials=self.email_monitor.creds)
+        
+        spreadsheet_id = os.getenv('SHEETS_SPREADSHEET_ID')
+        tab_name = os.getenv('SHEETS_TAB_NAME', 'Candidates')
+        
+        if not spreadsheet_id:
+            self.logger.error("SHEETS_SPREADSHEET_ID not set in environment variables")
             return {
-                "success": False,
-                "message": "Spreadsheet ID not configured",
-                "candidate": candidate_name
+                'success': False,
+                'error': 'SHEETS_SPREADSHEET_ID not configured'
             }
-            
-        try:
-            # Prepare row data
-            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            row_values = [[
-                candidate_name or 'Unknown',
-                candidate_email or 'No email',
-                status,
-                timestamp,
-                candidate_data.get('phone', ''),
-                candidate_data.get('source_email_id', ''),
-            ]]
-            
-            # Append to sheet
-            range_name = f"{self.sheets_tab_name}!A:F"
-            body = {'values': row_values}
-            
-            result = self.sheets_service.spreadsheets().values().append(
-                spreadsheetId=self.sheets_spreadsheet_id,
-                range=range_name,
-                valueInputOption='USER_ENTERED',
+        
+        # Read existing data to find if candidate exists
+        range_name = f'{tab_name}!A:G'
+        result = sheets_service.spreadsheets().values().get(
+            spreadsheetId=spreadsheet_id,
+            range=range_name
+        ).execute()
+        
+        values = result.get('values', [])
+        
+        # Get interview date from candidate_data if available
+        interview_date = candidate_data.get('interview_time', '') if candidate_data else ''
+        
+        # Prepare new row data
+        new_row = [
+            candidate_name,
+            candidate_email,
+            '',  # Phone (empty for now)
+            '',  # Resume link (empty for now)
+            status,
+            interview_date,
+            f'Auto-updated at {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}'
+        ]
+        
+        # Check if candidate already exists
+        candidate_row = None
+        for idx, row in enumerate(values[1:], start=2):  # Skip header row
+            if len(row) > 1 and row[1] == candidate_email:
+                candidate_row = idx
+                break
+        
+        if candidate_row:
+            # Update existing row
+            update_range = f'{tab_name}!A{candidate_row}:G{candidate_row}'
+            body = {'values': [new_row]}
+            sheets_service.spreadsheets().values().update(
+                spreadsheetId=spreadsheet_id,
+                range=update_range,
+                valueInputOption='RAW',
                 body=body
             ).execute()
-            
-            logger.info(f"Updated sheet for {candidate_name} with status: {status}")
-            return {
-                "success": True,
-                "message": f"Status '{status}' recorded in sheet",
-                "candidate": candidate_name,
-                "status": status
-            }
-            
-        except Exception as e:
-            logger.error(f"Failed to update sheet for {candidate_name}: {e}")
-            return {
-                "success": False,
-                "message": f"Sheet update failed: {str(e)}",
-                "candidate": candidate_name,
-                "status": status
-            }
+            self.logger.info(f"Updated existing candidate {candidate_name} in row {candidate_row}")
+        else:
+            # Append new row
+            append_range = f'{tab_name}!A:G'
+            body = {'values': [new_row]}
+            sheets_service.spreadsheets().values().append(
+                spreadsheetId=spreadsheet_id,
+                range=append_range,
+                valueInputOption='RAW',
+                insertDataOption='INSERT_ROWS',
+                body=body
+            ).execute()
+            self.logger.info(f"Added new candidate {candidate_name} to sheet")
+        
+        return {
+            'success': True,
+            'action': 'updated' if candidate_row else 'added',
+            'row': candidate_row if candidate_row else len(values) + 1
+        }
+        
+    except Exception as e:
+        self.logger.error(f"Error updating candidate in sheet: {str(e)}")
+        return {
+            'success': False,
+            'error': str(e)
+        }
