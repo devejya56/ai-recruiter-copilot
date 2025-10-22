@@ -12,7 +12,11 @@ from typing import Dict, Any, Optional, List
 from dataclasses import dataclass, asdict
 from dotenv import load_dotenv
 from datetime import datetime, timedelta
-from agents.email_monitor import EmailMonitor
+from agents.email_monitor import EmailMonito
+from googleapiclient.discovery import build
+from google.oauth2.credentials import Credentials
+from google.auth.transport.requests import Request
+from google_auth_oauthlib.flow import InstalledAppFlowr
 
 # Load environment variables
 load_dotenv()
@@ -68,11 +72,52 @@ class AutomationAgent:
         self.gmail_ca_id = os.getenv("GMAIL_CONNECTED_ACCOUNT_ID")
         self.gmail_pg_id = os.getenv("GMAIL_PROJECT_ID")
         
-        if not self.composio_api_key:
+        if not self.composio_api_key
+        
+                # Initialize Google Calendar and Sheets services using OAuth2
+        self.calendar_service = None
+        self.sheets_service = None
+        self._initialize_google_services():
             raise ValueError("COMPOSIO_API_KEY not found in environment")
         
         logger.info("AutomationAgent initialized")
-    
+
+
+        def _initialize_google_services(self):
+        """Initialize Google Calendar and Sheets API services using OAuth2."""
+        SCOPES = [
+            'https://www.googleapis.com/auth/gmail.readonly',
+            'https://www.googleapis.com/auth/calendar',
+            'https://www.googleapis.com/auth/spreadsheets'
+        ]
+        
+        creds = None
+        # Load existing token if available
+        if os.path.exists('token.json'):
+            creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+        
+        # Refresh or generate new credentials if needed
+        if not creds or not creds.valid:
+            if creds and creds.expired and creds.refresh_token:
+                creds.refresh(Request())
+            else:
+                if not os.path.exists('credentials.json'):
+                    logger.warning("credentials.json not found. Calendar and Sheets services not initialized.")
+                    return
+                flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+                creds = flow.run_local_server(port=0)
+            
+            # Save credentials for future use
+            with open('token.json', 'w') as token:
+                token.write(creds.to_json())
+        
+        try:
+            # Build Calendar and Sheets services
+            self.calendar_service = build('calendar', 'v3', credentials=creds)
+            self.sheets_service = build('sheets', 'v4', credentials=creds)
+            logger.info("Google Calendar and Sheets services initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize Google services: {e}")
     def parse_gmail_resumes(self, days_back: int = 7) -> List[CandidateProfile]:
         """Parse resumes from Gmail using EmailMonitor.
         
