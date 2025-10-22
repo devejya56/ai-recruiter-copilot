@@ -14,137 +14,112 @@ class EmailMonitor:
     Implements Gmail resume fetching via Gmail API with OAuth2 authentication.
     """
     
-    # OAuth2 scopes for Gmail readonly and Calendar full access (supports both APIs with single credentials.json)
+    # OAuth2 scopes for Gmail readonly, Calendar, and Sheets access
     SCOPES = [
         'https://www.googleapis.com/auth/gmail.readonly',
-        'https://www.googleapis.com/auth/calendar'
+        'https://www.googleapis.com/auth/calendar',
+        'https://www.googleapis.com/auth/spreadsheets'
     ]
     
-    def __init__(self, email_service=None, auth_config_id=None, connected_account_id=None, project_id=None):
+    def __init__(self, email_service=None, auth_config_id=None, connected_account_id=None, project_id=None, creds=None):
         self.email_service = email_service
         self.auth_config_id = auth_config_id
         self.connected_account_id = connected_account_id
         self.project_id = project_id
-        self.creds = None
+        self.creds = creds  # Use provided credentials if available
         self.service = None
         self._initialize_gmail_service()
     
     def _initialize_gmail_service(self):
         """
         Initialize Gmail API service using OAuth2 credentials.
-        Uses credentials.json for OAuth2 flow and stores token in token.json.
+        Uses provided credentials or initializes from credentials.json.
         """
         try:
-            # Check if token.json exists with stored credentials
-            if os.path.exists('token.json'):
-                self.creds = Credentials.from_authorized_user_file('token.json', self.SCOPES)
-            
-            # If credentials don't exist or are invalid, run OAuth2 flow
-            if not self.creds or not self.creds.valid:
-                if self.creds and self.creds.expired and self.creds.refresh_token:
-                    # Refresh expired credentials
-                    from google.auth.transport.requests import Request
-                    self.creds.refresh(Request())
-                else:
-                    # Run OAuth2 flow using credentials.json to generate new token
-                    flow = InstalledAppFlow.from_client_secrets_file(
-                        'credentials.json', self.SCOPES)
-                    self.creds = flow.run_local_server(port=0)
+            # If credentials were not provided, initialize them
+            if not self.creds:
+                # Check if token.json exists with stored credentials
+                if os.path.exists('token.json'):
+                    self.creds = Credentials.from_authorized_user_file('token.json', self.SCOPES)
                 
-                # Save credentials to token.json for future use
-                with open('token.json', 'w') as token:
-                    token.write(self.creds.to_json())
+                # If credentials don't exist or are invalid, run OAuth2 flow
+                if not self.creds or not self.creds.valid:
+                    if self.creds and self.creds.expired and self.creds.refresh_token:
+                        # Refresh expired credentials
+                        from google.auth.transport.requests import Request
+                        self.creds.refresh(Request())
+                    else:
+                        # Run OAuth2 flow using credentials.json to generate new token
+                        flow = InstalledAppFlow.from_client_secrets_file(
+                            'credentials.json', self.SCOPES)
+                        self.creds = flow.run_local_server(port=0)
+                    
+                    # Save credentials to token.json for future use
+                    with open('token.json', 'w') as token:
+                        token.write(self.creds.to_json())
             
-            # Build Gmail API service with OAuth2 credentials
+            # Build Gmail service using valid credentials
             self.service = build('gmail', 'v1', credentials=self.creds)
-            
+            print("Gmail service initialized successfully")
         except Exception as e:
-            print(f"Failed to initialize Gmail service: {e}")
+            print(f"Error initializing Gmail service: {e}")
             self.service = None
-    
-    def list_emails(self, query: str = '', max_results: int = 10) -> List[Dict]:
-        """
-        List emails from Gmail inbox using Gmail API.
-        """
-        if not self.service:
-            print("Gmail service not initialized")
-            return []
-        
-        try:
-            results = self.service.users().messages().list(
-                userId='me',
-                q=query,
-                maxResults=max_results
-            ).execute()
-            
-            messages = results.get('messages', [])
-            return messages
-        except HttpError as error:
-            print(f"An error occurred: {error}")
-            return []
     
     def fetch_resume_emails(self, days_back: int = 7) -> List[Dict]:
         """
-        Fetch emails containing resumes from the last N days.
+        Fetch emails with resume attachments from the last N days using Gmail API.
         
-        Steps:
-        1. Calculate date range (last N days)
-        2. Build Gmail query to search for messages with attachments (PDF/DOCX)
-           and keywords (resume, CV, application) in subject/body
-        3. Fetch matching messages using Gmail API
-        4. For each message, extract: sender name/email, subject, date, and attachment info
-        5. Parse candidate information from email metadata and content
-        6. Return list of structured candidate data
+        Args:
+            days_back: Number of days to look back for emails (default: 7)
+        
+        Returns:
+            List of candidate info dictionaries containing email details and attachments
         """
-        if not self.service:
-            print("Gmail service not initialized")
-            return []
-        
         try:
-            # Step 1: Calculate date range
-            date_after = (datetime.now() - timedelta(days=days_back)).strftime('%Y/%m/%d')
+            if not self.service:
+                print("Gmail service not initialized. Cannot fetch emails.")
+                return []
             
-            # Step 2: Build query for resume emails with attachments
-            # Search for messages with PDF/DOCX attachments and resume-related keywords
-            query = f"after:{date_after} (has:attachment filename:pdf OR filename:docx OR filename:doc) (subject:(resume OR CV OR application) OR (resume OR CV OR application))"
+            # Step 1: Calculate date range for query
+            now = datetime.now()
+            start_date = now - timedelta(days=days_back)
+            date_query = start_date.strftime('%Y/%m/%d')  # Format: YYYY/MM/DD for Gmail API
             
-            # Step 3: Fetch matching messages
+            # Step 2: Build Gmail search query
+            # Search for: has attachment, after specific date, in inbox
+            query = f'has:attachment after:{date_query} in:inbox'
+            
+            print(f"Searching for emails with attachments since {date_query}...")
+            
+            # Step 3: Execute search query
             results = self.service.users().messages().list(
                 userId='me',
                 q=query,
-                maxResults=50
+                maxResults=50  # Limit results for performance
             ).execute()
             
             messages = results.get('messages', [])
+            print(f"Found {len(messages)} messages with attachments")
+            
             resume_emails = []
             
-            # Step 4 & 5: Extract and parse candidate information
+            # Step 4: Fetch and process each message
             for msg in messages:
                 try:
-                    # Get full message details
+                    # Step 5: Get full message details
                     message = self.service.users().messages().get(
                         userId='me',
                         id=msg['id'],
                         format='full'
                     ).execute()
                     
-                    # Extract headers
+                    # Extract headers (From, Subject, Date)
                     headers = message['payload'].get('headers', [])
-                    subject = ''
-                    sender = ''
-                    date = ''
+                    subject = next((h['value'] for h in headers if h['name'].lower() == 'subject'), 'No Subject')
+                    sender = next((h['value'] for h in headers if h['name'].lower() == 'from'), 'Unknown Sender')
+                    date = next((h['value'] for h in headers if h['name'].lower() == 'date'), '')
                     
-                    for header in headers:
-                        if header['name'].lower() == 'subject':
-                            subject = header['value']
-                        elif header['name'].lower() == 'from':
-                            sender = header['value']
-                        elif header['name'].lower() == 'date':
-                            date = header['value']
-                    
-                    # Extract sender name and email
-                    sender_name = ''
-                    sender_email = ''
+                    # Parse sender name and email
                     email_match = re.search(r'<(.+?)>', sender)
                     if email_match:
                         sender_email = email_match.group(1)
