@@ -14,8 +14,11 @@ class EmailMonitor:
     Implements Gmail resume fetching via Gmail API with OAuth2 authentication.
     """
     
-    # OAuth2 scope required for Gmail API access
-    SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
+    # OAuth2 scopes for Gmail and Calendar readonly access (supports both APIs with single credentials.json)
+    SCOPES = [
+        'https://www.googleapis.com/auth/gmail.readonly',
+        'https://www.googleapis.com/auth/calendar.readonly'
+    ]
     
     def __init__(self, email_service=None, auth_config_id=None, connected_account_id=None, project_id=None):
         self.email_service = email_service
