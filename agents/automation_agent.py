@@ -254,43 +254,115 @@ class AutomationAgent:
         return result
     
     def schedule_interview_in_calendar(self, candidate_name: str, candidate_email: str, candidate_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Schedule an interview in calendar for a candidate.
-        This is a stub implementation that returns a success response.
-        
-        Args:
-            candidate_name: Name of the candidate
-            candidate_email: Email of the candidate
-            candidate_data: Full candidate data dictionary
-        
-        Returns:
-            Dict with success status and stub message
-        """
-        logger.info(f"[STUB] schedule_interview_in_calendar called for {candidate_name} ({candidate_email})")
-        logger.info("[STUB] This method needs to be implemented to schedule calendar events")
-        return {
-            "success": True,
-            "message": "[STUB] Interview scheduling not yet implemented",
-            "candidate": candidate_name
-        }
-    
+        """Schedule an interview in Google Calendar for a candidate."""
+        if not self.calendar_service:
+            logger.error("Calendar service not initialized")
+            return {
+                "success": False,
+                "message": "Calendar service unavailable",
+                "candidate": candidate_name
+            }
+            
+        try:
+            # Create event 3 days from now at 10 AM (1 hour duration)
+            start_time = datetime.now() + timedelta(days=3)
+            start_time = start_time.replace(hour=10, minute=0, second=0, microsecond=0)
+            end_time = start_time + timedelta(hours=1)
+            
+            event = {
+                'summary': f'Interview with {candidate_name}',
+                'description': f'Technical interview with candidate {candidate_name}\nEmail: {candidate_email}',
+                'start': {
+                    'dateTime': start_time.isoformat(),
+                    'timeZone': 'UTC',
+                },
+                'end': {
+                    'dateTime': end_time.isoformat(),
+                    'timeZone': 'UTC',
+                },
+                'attendees': [
+                    {'email': candidate_email},
+                ],
+                'reminders': {
+                    'useDefault': False,
+                    'overrides': [
+                        {'method': 'email', 'minutes': 24 * 60},
+                        {'method': 'popup', 'minutes': 30},
+                    ],
+                },
+            }
+            
+            event_result = self.calendar_service.events().insert(calendarId='primary', body=event).execute()
+            logger.info(f"Interview scheduled for {candidate_name}: {event_result.get('htmlLink')}")
+            
+            return {
+                "success": True,
+                "message": f"Interview scheduled for {start_time.strftime('%Y-%m-%d %H:%M')}",
+                "candidate": candidate_name,
+                "event_link": event_result.get('htmlLink')
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to schedule interview for {candidate_name}: {e}")
+            return {
+                "success": False,
+                "message": f"Calendar scheduling failed: {str(e)}",
+                "candidate": candidate_name
+            }
     def update_candidate_in_sheet(self, candidate_name: str, candidate_email: str, status: str, candidate_data: Dict[str, Any]) -> Dict[str, Any]:
-        """Update candidate status in Google Sheets.
-        This is a stub implementation that returns a success response.
-        
-        Args:
-            candidate_name: Name of the candidate
-            candidate_email: Email of the candidate
-            status: Status to set (e.g., 'Interview Scheduled', 'Interview Pending')
-            candidate_data: Full candidate data dictionary
-        
-        Returns:
-            Dict with success status and stub message
-        """
-        logger.info(f"[STUB] update_candidate_in_sheet called for {candidate_name} ({candidate_email}) with status: {status}")
-        logger.info("[STUB] This method needs to be implemented to update candidate status in sheets")
-        return {
-            "success": True,
-            "message": "[STUB] Candidate status update not yet implemented",
-            "candidate": candidate_name,
-            "status": status
-        }
+        """Update candidate status in Google Sheets."""
+        if not self.sheets_service:
+            logger.error("Sheets service not initialized")
+            return {
+                "success": False,
+                "message": "Sheets service unavailable",
+                "candidate": candidate_name
+            }
+            
+        if not self.sheets_spreadsheet_id:
+            logger.error("SHEETS_SPREADSHEET_ID not configured")
+            return {
+                "success": False,
+                "message": "Spreadsheet ID not configured",
+                "candidate": candidate_name
+            }
+            
+        try:
+            # Prepare row data
+            timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            row_values = [[
+                candidate_name or 'Unknown',
+                candidate_email or 'No email',
+                status,
+                timestamp,
+                candidate_data.get('phone', ''),
+                candidate_data.get('source_email_id', ''),
+            ]]
+            
+            # Append to sheet
+            range_name = f"{self.sheets_tab_name}!A:F"
+            body = {'values': row_values}
+            
+            result = self.sheets_service.spreadsheets().values().append(
+                spreadsheetId=self.sheets_spreadsheet_id,
+                range=range_name,
+                valueInputOption='USER_ENTERED',
+                body=body
+            ).execute()
+            
+            logger.info(f"Updated sheet for {candidate_name} with status: {status}")
+            return {
+                "success": True,
+                "message": f"Status '{status}' recorded in sheet",
+                "candidate": candidate_name,
+                "status": status
+            }
+            
+        except Exception as e:
+            logger.error(f"Failed to update sheet for {candidate_name}: {e}")
+            return {
+                "success": False,
+                "message": f"Sheet update failed: {str(e)}",
+                "candidate": candidate_name,
+                "status": status
+            }
