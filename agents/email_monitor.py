@@ -34,4 +34,4 @@ class EmailMonitor:
     def list_emails(self, query: str = '', max_results: int = 10) -> List[Dict]:
         """
         List emails from Gmail inbox using Gmail API.
-        
+        """
