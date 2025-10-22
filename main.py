@@ -14,6 +14,8 @@ import os
 
 load_dotenv()
 
+spreadsheet_id = os.getenv("SPREADSHEET_ID")
+
 # Debug print to verify SPREADSHEET_ID is loaded
 print("Loaded Spreadsheet ID:", os.getenv("SPREADSHEET_ID"))
 
@@ -88,8 +90,10 @@ def main():
                         candidate_name=name,
                         candidate_email=email,
                         status=scheduling_status,
-                        interview_date=interview_date_str
+                        interview_date=interview_date_str,
+                        spreadsheet_id=spreadsheet_id  # ALWAYS pass as argument
                     )
+
                     
                     # Step 3.4: Print success/fail for status update
                     if update_result:
