@@ -4,32 +4,57 @@ import re
 from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
 class EmailMonitor:
     """
     Monitors and processes candidate communication via email.
-    Implements Gmail resume fetching via Gmail API.
+    Implements Gmail resume fetching via Gmail API with OAuth2 authentication.
     """
+    
+    # OAuth2 scope required for Gmail API access
+    SCOPES = ['https://www.googleapis.com/auth/gmail.readonly']
     
     def __init__(self, email_service=None, auth_config_id=None, connected_account_id=None, project_id=None):
         self.email_service = email_service
         self.auth_config_id = auth_config_id
         self.connected_account_id = connected_account_id
         self.project_id = project_id
-        self.gmail_api_key = os.getenv('GMAIL_API_KEY')
+        self.creds = None
         self.service = None
-        if self.gmail_api_key:
-            self._initialize_gmail_service()
+        self._initialize_gmail_service()
     
     def _initialize_gmail_service(self):
         """
-        Initialize Gmail API service using the API key from .env
+        Initialize Gmail API service using OAuth2 credentials.
+        Uses credentials.json for OAuth2 flow and stores token in token.json.
         """
         try:
-            # Initialize Gmail API service
-            self.service = build('gmail', 'v1', developerKey=self.gmail_api_key)
+            # Check if token.json exists with stored credentials
+            if os.path.exists('token.json'):
+                self.creds = Credentials.from_authorized_user_file('token.json', self.SCOPES)
+            
+            # If credentials don't exist or are invalid, run OAuth2 flow
+            if not self.creds or not self.creds.valid:
+                if self.creds and self.creds.expired and self.creds.refresh_token:
+                    # Refresh expired credentials
+                    from google.auth.transport.requests import Request
+                    self.creds.refresh(Request())
+                else:
+                    # Run OAuth2 flow using credentials.json to generate new token
+                    flow = InstalledAppFlow.from_client_secrets_file(
+                        'credentials.json', self.SCOPES)
+                    self.creds = flow.run_local_server(port=0)
+                
+                # Save credentials to token.json for future use
+                with open('token.json', 'w') as token:
+                    token.write(self.creds.to_json())
+            
+            # Build Gmail API service with OAuth2 credentials
+            self.service = build('gmail', 'v1', credentials=self.creds)
+            
         except Exception as e:
             print(f"Failed to initialize Gmail service: {e}")
             self.service = None
