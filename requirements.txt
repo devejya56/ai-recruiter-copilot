@@ -44,3 +44,6 @@ httpx==0.26.0
 # Logging & monitoring
 loguru==0.7.2
 prometheus-client==0.19.0
+
+# Timezone handling
+pytz
