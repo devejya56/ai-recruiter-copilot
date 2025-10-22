@@ -5,15 +5,15 @@ from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-
 class EmailMonitor:
     """
     Monitors and processes candidate communication via email.
     Implements Gmail resume fetching via Gmail API.
     """
     
-    def __init__(self, email_service=None):
+    def __init__(self, email_service=None, auth_config_id=None):
         self.email_service = email_service
+        self.auth_config_id = auth_config_id
         self.gmail_api_key = os.getenv('GMAIL_API_KEY')
         self.service = None
         if self.gmail_api_key:
