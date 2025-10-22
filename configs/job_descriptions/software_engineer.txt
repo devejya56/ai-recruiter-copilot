@@ -1,0 +1,4 @@
+Role: Software Engineer
+Skills: Python, SQL, REST APIs
+Experience: 2+ years software development
+Education: B.Tech in CS, MCA, or equivalent
