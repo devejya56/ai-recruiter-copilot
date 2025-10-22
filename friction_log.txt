@@ -5,33 +5,27 @@ Project: AI Recruiter Copilot
 Purpose: Document all major errors, troubleshooting steps, and fixes applied
          during development and debugging.
 =============================================================================
-
 Entry #1: Google Sheets API - Spreadsheet ID Error
 ---------------------------------------------------
 Date: October 2025
 Error: "The caller does not have permission" / Invalid spreadsheet ID
 Cause: The spreadsheet ID in .env was incorrect or pointing to a 
        non-existent/inaccessible sheet.
-
 Steps Taken:
   1. Verified the spreadsheet ID in the .env file
   2. Checked Google Cloud Console for API permissions
   3. Confirmed service account had proper sharing permissions
   4. Updated SPREADSHEET_ID in .env to correct value
-
 Result/Fix: Corrected spreadsheet ID in .env file. Verified service account
             email (from credentials JSON) was added as an editor to the
             Google Sheet.
-
 ---------------------------------------------------
-
 Entry #2: Environment Variables Not Loading
 ---------------------------------------------------
 Date: October 2025
 Error: Application unable to read environment variables, resulting in
        undefined values for API keys and configuration.
 Cause: Missing or improperly configured dotenv package.
-
 Steps Taken:
   1. Checked if python-dotenv was installed
   2. Verified .env file location (should be in project root)
@@ -39,70 +33,180 @@ Steps Taken:
      from dotenv import load_dotenv
      load_dotenv()
   4. Confirmed .env file syntax (KEY=VALUE format, no quotes unless needed)
-
 Result/Fix: Installed python-dotenv via pip. Added proper load_dotenv()
             call at the beginning of main script. Environment variables
             now load correctly.
-
 ---------------------------------------------------
-
 Entry #3: Google Sheets Tab/Worksheet Name Error
 ---------------------------------------------------
 Date: October 2025
 Error: "Unable to parse range" or worksheet not found error when trying
        to read/write to Google Sheets.
 Cause: Incorrect worksheet/tab name specified in code, or tab didn't exist.
-
 Steps Taken:
   1. Opened the Google Sheet to verify actual tab names
   2. Checked code for hardcoded tab names (e.g., 'Sheet1', 'Candidates')
   3. Verified case sensitivity of tab names
   4. Updated code to use correct tab name
   5. Added error handling for missing worksheets
-
 Result/Fix: Corrected worksheet name in code to match actual tab name
             in Google Sheets. Added validation to check if worksheet
             exists before attempting operations.
-
 ---------------------------------------------------
-
 Entry #4: Google Cloud Credentials Path Issues
 ---------------------------------------------------
 Date: October 2025
 Error: "Could not automatically determine credentials" or file not found
        errors when accessing Google Sheets API.
 Cause: Credentials JSON file path incorrect or file missing.
-
 Steps Taken:
   1. Verified credentials.json file exists in project directory
   2. Checked GOOGLE_APPLICATION_CREDENTIALS environment variable
   3. Confirmed path in .env or code is absolute or relative to project root
   4. Validated JSON file format and content
-
 Result/Fix: Set correct path to credentials.json in environment variable.
             Used absolute path to avoid ambiguity. Credentials now load
             successfully.
-
 ---------------------------------------------------
-
 Entry #5: API Rate Limiting / Quota Exceeded
 ---------------------------------------------------
 Date: October 2025
 Error: "Quota exceeded" or "Rate limit exceeded" errors from Google
        Sheets API.
 Cause: Too many API calls in short time period.
-
 Steps Taken:
   1. Reviewed Google Cloud Console quotas
   2. Added rate limiting/delay between API calls
   3. Implemented batching for multiple operations
   4. Added retry logic with exponential backoff
-
 Result/Fix: Implemented time.sleep() delays between calls. Added batch
             update operations to reduce API call count. Errors resolved.
-
 ---------------------------------------------------
-
+Entry #6: Python Syntax and Indentation Errors
+---------------------------------------------------
+Date: October 2025
+Error: SyntaxError and IndentationError during script execution.
+Cause: Inconsistent indentation levels, mixing tabs and spaces, missing
+       colons, or incorrect block structure.
+Steps Taken:
+  1. Ran Python linter to identify syntax issues
+  2. Checked for mixed tabs/spaces using editor settings
+  3. Verified proper indentation for all function definitions and control structures
+  4. Added missing colons after function definitions and control statements
+  5. Ensured consistent 4-space indentation throughout codebase
+Result/Fix: Standardized all indentation to 4 spaces. Fixed missing colons
+            and corrected block structure. All syntax errors resolved.
+---------------------------------------------------
+Entry #7: AttributeError - Missing Object Methods/Properties
+---------------------------------------------------
+Date: October 2025
+Error: AttributeError when accessing methods or properties on objects.
+Cause: Attempting to call methods that don't exist on the object type,
+       or accessing None objects.
+Steps Taken:
+  1. Added type checking and None validation before accessing attributes
+  2. Reviewed API documentation to verify correct method names
+  3. Added defensive programming with hasattr() checks
+  4. Implemented try-except blocks around attribute access
+  5. Added logging to track object types and values
+Result/Fix: Added proper None checks and attribute validation. Corrected
+            method names to match API specifications. AttributeErrors
+            eliminated.
+---------------------------------------------------
+Entry #8: Missing schedule_and_notify Method
+---------------------------------------------------
+Date: October 2025
+Error: AttributeError: 'AIRecruiterCopilot' object has no attribute
+       'schedule_and_notify'
+Cause: Method was referenced in code but not implemented in the class.
+Steps Taken:
+  1. Searched codebase for all references to schedule_and_notify
+  2. Identified the required functionality (scheduling interviews and
+     sending notifications)
+  3. Implemented complete schedule_and_notify method with:
+     - Calendar integration for scheduling
+     - Email notification functionality
+     - Error handling and logging
+  4. Added proper method signature with all required parameters
+  5. Tested integration with existing workflow
+Result/Fix: Implemented full schedule_and_notify method that integrates
+            Google Calendar API for scheduling and Gmail API for sending
+            notifications. Method now works as expected in the workflow.
+---------------------------------------------------
+Entry #9: OAuth Credential Reuse and Refresh Issues
+---------------------------------------------------
+Date: October 2025
+Error: Authentication failures when reusing OAuth credentials, expired
+       refresh tokens.
+Cause: OAuth tokens expire and need refresh; improper token storage or
+       refresh logic.
+Steps Taken:
+  1. Implemented token.json storage for OAuth credentials
+  2. Added token refresh logic using refresh_token
+  3. Implemented automatic re-authentication flow when tokens expire
+  4. Added proper scopes for all required Google APIs
+  5. Ensured credentials.json is properly configured with OAuth client ID
+  6. Implemented Credentials.from_authorized_user_info() for token loading
+Result/Fix: Created robust OAuth flow with automatic token refresh.
+            Tokens are now stored in token.json and refreshed automatically
+            when expired. Authentication persists across sessions.
+---------------------------------------------------
+Entry #10: Spreadsheet ID from dotenv Not Loading
+---------------------------------------------------
+Date: October 2025
+Error: Spreadsheet ID loaded from .env is None or empty string.
+Cause: Environment variable not properly loaded or incorrect variable name
+       in .env file.
+Steps Taken:
+  1. Verified load_dotenv() is called before accessing environment variables
+  2. Checked .env file for correct SPREADSHEET_ID variable name
+  3. Ensured .env file is in the correct project root directory
+  4. Added validation to check if SPREADSHEET_ID is loaded
+  5. Implemented fallback error message if variable is missing
+  6. Verified no whitespace or quotes around the value in .env
+Result/Fix: Confirmed load_dotenv() placement at script start. Fixed
+            variable name mismatch in .env. Added validation that raises
+            clear error if SPREADSHEET_ID is not found.
+---------------------------------------------------
+Entry #11: Google Sheets Tab Range Parsing Issues
+---------------------------------------------------
+Date: October 2025
+Error: "Unable to parse range" errors when reading/writing specific tabs.
+Cause: Incorrect range format, tab names with spaces not properly quoted,
+       or invalid cell references.
+Steps Taken:
+  1. Verified tab name matches exactly (case-sensitive)
+  2. Wrapped tab names containing spaces in single quotes: 'Tab Name'!A1:Z
+  3. Checked range format follows Google Sheets API convention
+  4. Used A1 notation correctly (e.g., 'Sheet1'!A1:Z100)
+  5. Added validation for tab existence before operations
+  6. Implemented error handling for invalid range specifications
+Result/Fix: Corrected all range specifications to use proper A1 notation.
+            Tab names with spaces now properly quoted. Added utility
+            function to validate and format ranges correctly.
+---------------------------------------------------
+Entry #12: Gmail API HttpError 500 - Internal Server Error
+---------------------------------------------------
+Date: October 2025
+Error: googleapiclient.errors.HttpError: 500 Internal Server Error when
+       sending emails via Gmail API.
+Cause: Intermittent Gmail API issues, malformed email message, or API quota
+       problems.
+Steps Taken:
+  1. Implemented retry logic with exponential backoff for 500 errors
+  2. Validated email message format (RFC 2822 compliance)
+  3. Checked that email headers are properly formatted
+  4. Ensured proper base64url encoding for message body
+  5. Added error logging to capture full error details
+  6. Implemented try-except with specific HttpError handling
+  7. Added validation for recipient email addresses
+  8. Set reasonable retry limit (3-5 attempts) with delays
+Result/Fix: Implemented robust retry mechanism with exponential backoff
+            (delays of 2, 4, 8 seconds). Validated email format and
+            encoding. Added comprehensive error handling that catches
+            HttpError 500 and retries automatically. Success rate improved
+            significantly.
+---------------------------------------------------
 =============================================================================
 END OF LOG
 =============================================================================
