@@ -35,12 +35,12 @@ class PipelineManager:
             result = self.notion.pages.create(
                 parent={"database_id": self.notion_db_id},
                 properties={
-                    "Name": {"title": [{"text": {"content": candidate.get("name", "")}}]},
-                    "Email": {"email": candidate.get("email", "")},
+                    "Name": {"title": [{"text": {"content": getattr(candidate, "name", "")}}]},
+                    "Email": {"email": getattr(candidate, "email", "")},
                     # Add more fields as needed
                 }
             )
-            print(f"Candidate '{candidate.get('name')}' added to Notion.")
+            print(f"Candidate '{getattr(candidate, 'name', 'Unknown')}' added to Notion.")
             return result
         except Exception as e:
             print(f"Error adding candidate to Notion: {e}")
