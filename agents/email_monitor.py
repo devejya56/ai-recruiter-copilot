@@ -1,5 +1,7 @@
 import os
 import base64
+import re
+from datetime import datetime, timedelta
 from typing import List, Dict, Optional
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -56,8 +58,117 @@ class EmailMonitor:
     def fetch_resume_emails(self, days_back: int = 7) -> List[Dict]:
         """
         Fetch emails containing resumes from the last N days.
-        This is a stub implementation that returns an empty list.
+        
+        Steps:
+        1. Calculate date range (last N days)
+        2. Build Gmail query to search for messages with attachments (PDF/DOCX)
+           and keywords (resume, CV, application) in subject/body
+        3. Fetch matching messages using Gmail API
+        4. For each message, extract: sender name/email, subject, date, and attachment info
+        5. Parse candidate information from email metadata and content
+        6. Return list of structured candidate data
         """
-        print(f"[STUB] fetch_resume_emails called with days_back={days_back}")
-        print("[STUB] This method needs to be implemented to fetch and parse resume emails")
-        return []
+        if not self.service:
+            print("Gmail service not initialized")
+            return []
+        
+        try:
+            # Step 1: Calculate date range
+            date_after = (datetime.now() - timedelta(days=days_back)).strftime('%Y/%m/%d')
+            
+            # Step 2: Build query for resume emails with attachments
+            # Search for messages with PDF/DOCX attachments and resume-related keywords
+            query = f"after:{date_after} (has:attachment filename:pdf OR filename:docx OR filename:doc) (subject:(resume OR CV OR application) OR (resume OR CV OR application))"
+            
+            # Step 3: Fetch matching messages
+            results = self.service.users().messages().list(
+                userId='me',
+                q=query,
+                maxResults=50
+            ).execute()
+            
+            messages = results.get('messages', [])
+            resume_emails = []
+            
+            # Step 4 & 5: Extract and parse candidate information
+            for msg in messages:
+                try:
+                    # Get full message details
+                    message = self.service.users().messages().get(
+                        userId='me',
+                        id=msg['id'],
+                        format='full'
+                    ).execute()
+                    
+                    # Extract headers
+                    headers = message['payload'].get('headers', [])
+                    subject = ''
+                    sender = ''
+                    date = ''
+                    
+                    for header in headers:
+                        if header['name'].lower() == 'subject':
+                            subject = header['value']
+                        elif header['name'].lower() == 'from':
+                            sender = header['value']
+                        elif header['name'].lower() == 'date':
+                            date = header['value']
+                    
+                    # Extract sender name and email
+                    sender_name = ''
+                    sender_email = ''
+                    email_match = re.search(r'<(.+?)>', sender)
+                    if email_match:
+                        sender_email = email_match.group(1)
+                        sender_name = sender.split('<')[0].strip().strip('"')
+                    else:
+                        sender_email = sender
+                        sender_name = sender
+                    
+                    # Extract attachments
+                    attachments = []
+                    parts = message['payload'].get('parts', [])
+                    
+                    def extract_attachments(parts_list):
+                        for part in parts_list:
+                            if part.get('filename'):
+                                filename = part['filename']
+                                # Check if it's a resume file (PDF, DOC, DOCX)
+                                if filename.lower().endswith(('.pdf', '.doc', '.docx')):
+                                    attachments.append({
+                                        'filename': filename,
+                                        'mimeType': part.get('mimeType', ''),
+                                        'size': part.get('body', {}).get('size', 0)
+                                    })
+                            # Recursively check nested parts
+                            if part.get('parts'):
+                                extract_attachments(part['parts'])
+                    
+                    extract_attachments(parts)
+                    
+                    # Step 6: Build candidate info dictionary
+                    if attachments:  # Only include if attachments found
+                        candidate_info = {
+                            'message_id': msg['id'],
+                            'sender_name': sender_name,
+                            'sender_email': sender_email,
+                            'subject': subject,
+                            'date': date,
+                            'attachments': attachments,
+                            'thread_id': message.get('threadId', '')
+                        }
+                        resume_emails.append(candidate_info)
+                        
+                except Exception as e:
+                    print(f"Error processing message {msg['id']}: {e}")
+                    continue
+            
+            print(f"Found {len(resume_emails)} resume emails from the last {days_back} days")
+            return resume_emails
+            
+        except HttpError as error:
+            print(f"An error occurred while fetching resume emails: {error}")
+            return []
+        except Exception as e:
+            print(f"Unexpected error in fetch_resume_emails: {e}")
+            return []
