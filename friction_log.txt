@@ -1,0 +1,108 @@
+=============================================================================
+                           FRICTION LOG
+=============================================================================
+Project: AI Recruiter Copilot
+Purpose: Document all major errors, troubleshooting steps, and fixes applied
+         during development and debugging.
+=============================================================================
+
+Entry #1: Google Sheets API - Spreadsheet ID Error
+---------------------------------------------------
+Date: October 2025
+Error: "The caller does not have permission" / Invalid spreadsheet ID
+Cause: The spreadsheet ID in .env was incorrect or pointing to a 
+       non-existent/inaccessible sheet.
+
+Steps Taken:
+  1. Verified the spreadsheet ID in the .env file
+  2. Checked Google Cloud Console for API permissions
+  3. Confirmed service account had proper sharing permissions
+  4. Updated SPREADSHEET_ID in .env to correct value
+
+Result/Fix: Corrected spreadsheet ID in .env file. Verified service account
+            email (from credentials JSON) was added as an editor to the
+            Google Sheet.
+
+---------------------------------------------------
+
+Entry #2: Environment Variables Not Loading
+---------------------------------------------------
+Date: October 2025
+Error: Application unable to read environment variables, resulting in
+       undefined values for API keys and configuration.
+Cause: Missing or improperly configured dotenv package.
+
+Steps Taken:
+  1. Checked if python-dotenv was installed
+  2. Verified .env file location (should be in project root)
+  3. Added/verified dotenv import in main application file:
+     from dotenv import load_dotenv
+     load_dotenv()
+  4. Confirmed .env file syntax (KEY=VALUE format, no quotes unless needed)
+
+Result/Fix: Installed python-dotenv via pip. Added proper load_dotenv()
+            call at the beginning of main script. Environment variables
+            now load correctly.
+
+---------------------------------------------------
+
+Entry #3: Google Sheets Tab/Worksheet Name Error
+---------------------------------------------------
+Date: October 2025
+Error: "Unable to parse range" or worksheet not found error when trying
+       to read/write to Google Sheets.
+Cause: Incorrect worksheet/tab name specified in code, or tab didn't exist.
+
+Steps Taken:
+  1. Opened the Google Sheet to verify actual tab names
+  2. Checked code for hardcoded tab names (e.g., 'Sheet1', 'Candidates')
+  3. Verified case sensitivity of tab names
+  4. Updated code to use correct tab name
+  5. Added error handling for missing worksheets
+
+Result/Fix: Corrected worksheet name in code to match actual tab name
+            in Google Sheets. Added validation to check if worksheet
+            exists before attempting operations.
+
+---------------------------------------------------
+
+Entry #4: Google Cloud Credentials Path Issues
+---------------------------------------------------
+Date: October 2025
+Error: "Could not automatically determine credentials" or file not found
+       errors when accessing Google Sheets API.
+Cause: Credentials JSON file path incorrect or file missing.
+
+Steps Taken:
+  1. Verified credentials.json file exists in project directory
+  2. Checked GOOGLE_APPLICATION_CREDENTIALS environment variable
+  3. Confirmed path in .env or code is absolute or relative to project root
+  4. Validated JSON file format and content
+
+Result/Fix: Set correct path to credentials.json in environment variable.
+            Used absolute path to avoid ambiguity. Credentials now load
+            successfully.
+
+---------------------------------------------------
+
+Entry #5: API Rate Limiting / Quota Exceeded
+---------------------------------------------------
+Date: October 2025
+Error: "Quota exceeded" or "Rate limit exceeded" errors from Google
+       Sheets API.
+Cause: Too many API calls in short time period.
+
+Steps Taken:
+  1. Reviewed Google Cloud Console quotas
+  2. Added rate limiting/delay between API calls
+  3. Implemented batching for multiple operations
+  4. Added retry logic with exponential backoff
+
+Result/Fix: Implemented time.sleep() delays between calls. Added batch
+            update operations to reduce API call count. Errors resolved.
+
+---------------------------------------------------
+
+=============================================================================
+END OF LOG
+=============================================================================
