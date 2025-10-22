@@ -73,7 +73,6 @@ class AutomationAgent:
         self.gmail_ca_id = os.getenv("GMAIL_CONNECTED_ACCOUNT_ID")
         self.gmail_pg_id = os.getenv("GMAIL_PROJECT_ID")
         
-        if not self.composio_api_key
         
                 # Initialize Google Calendar and Sheets services using OAuth2
         self.calendar_service = None
