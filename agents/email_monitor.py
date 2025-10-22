@@ -36,3 +36,28 @@ class EmailMonitor:
         """
         List emails from Gmail inbox using Gmail API.
         """
+        if not self.service:
+            print("Gmail service not initialized")
+            return []
+        
+        try:
+            results = self.service.users().messages().list(
+                userId='me',
+                q=query,
+                maxResults=max_results
+            ).execute()
+            
+            messages = results.get('messages', [])
+            return messages
+        except HttpError as error:
+            print(f"An error occurred: {error}")
+            return []
+    
+    def fetch_resume_emails(self, days_back: int = 7) -> List[Dict]:
+        """
+        Fetch emails containing resumes from the last N days.
+        This is a stub implementation that returns an empty list.
+        """
+        print(f"[STUB] fetch_resume_emails called with days_back={days_back}")
+        print("[STUB] This method needs to be implemented to fetch and parse resume emails")
+        return []
